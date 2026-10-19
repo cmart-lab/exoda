@@ -1,5 +1,5 @@
 // Απλός service worker: η εφαρμογή ανοίγει και χωρίς δίκτυο, τα δεδομένα έρχονται από το Sheet.
-const CACHE = 'exoda-v8';
+const CACHE = 'exoda-v9';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

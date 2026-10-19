@@ -712,7 +712,7 @@ function renderList() {
   const lbl = searching ? `${list.length} ${list.length === 1 ? 'κίνηση βρέθηκε' : 'κινήσεις βρέθηκαν'} · έξοδα`
     : listP.kind === 'y' ? 'Έξοδα έτους' : listP.kind === 'r' ? 'Έξοδα περιόδου' : 'Έξοδα μήνα';
   $('listSum').innerHTML = `<div class="label">${lbl}</div><div class="big neg">${money(t.e, 'e')}</div>` +
-    `<div class="sumsub"><span class="pos">Έσοδα ${money(t.i, 'i')}</span><span class="${t.d < 0 ? 'neg' : ''}">Διαφορά ${signed(t.d)}</span></div>`;
+    `<div class="sumsub"><span class="pos">Έσοδα ${money(t.i, 'i')}</span><span class="${t.d < 0 ? 'neg' : ''}">${searching ? 'Διαφορά' : listP.kind === 'y' ? 'Διαφορά έτους' : listP.kind === 'r' ? 'Διαφορά περιόδου' : 'Διαφορά μήνα'} ${signed(t.d)}</span></div>`;
   $('txList').innerHTML = dayGroupsHTML(list, searching ? 300 : 0);
 }
 
