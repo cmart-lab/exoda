@@ -166,6 +166,19 @@
   .pgroup .gh{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;margin:10px 0 8px}
   .emojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:8px}
   .emojis button{border:0;background:var(--bg);height:40px;border-radius:10px;font-size:20px}
+  .vt{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+  .vt th,.vt td{padding:9px 3px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+  .vt thead th{border-top:0;font-size:18px;font-weight:400;padding-top:0}
+  .vt tbody th,.vt tfoot th{text-align:left;font-weight:600}
+  .vt tbody tr{cursor:pointer}
+  .vt tbody tr:active{background:var(--accent-soft)}
+  .vt .tot{font-weight:700}
+  .vt .zero{color:var(--faint)}
+  .vt tr.none th{color:var(--muted);font-weight:500}
+  .vt tfoot th,.vt tfoot td{font-weight:700;border-top:2px solid var(--line)}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-top:10px}
+  .check{display:flex;align-items:center;gap:10px;font-size:15px;padding:6px 0;cursor:pointer}
+  .check input{width:20px;height:20px;accent-color:var(--accent)}
   .stat{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:15px;background:var(--bg);border-radius:12px;padding:12px 14px}
   .stat b{font-variant-numeric:tabular-nums;text-align:right}
   .warnbox{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:12px}
@@ -247,11 +260,17 @@
         <div class="h2" id="repBreakTitle"></div>
         <div id="repBreak"></div>
       </div>
+      <div class="card" id="vehCard" hidden>
+        <div class="h2">Οχήματα <span class="label" style="font-weight:500">σε €</span></div>
+        <div id="vehTable"></div>
+      </div>
     </section>
 
     <section id="tab-set" hidden>
       <div class="sect">Επαναλαμβανόμενες</div>
       <div class="list" id="recList"></div>
+      <div class="sect">Οχήματα</div>
+      <div class="list" id="vehList"></div>
       <div class="sect">Ρυθμίσεις</div>
       <div class="list">
         <button class="li" data-act="cats"><span class="ic">🏷️</span><span class="mid"><span class="tn">Κατηγορίες</span><br><span class="tc">Προσθήκη, μετονομασία, εικονίδια</span></span><span class="go">›</span></button>
@@ -365,7 +384,7 @@ async function call(body) {
 }
 
 // ===================== δεδομένα =====================
-let D = {tx: [], cats: [], recs: [], accs: [], now: '', url: ''};
+let D = {tx: [], cats: [], recs: [], accs: [], vehs: [], now: '', url: ''};
 let OPS = [];
 let V = D;                 // ό,τι βλέπουμε = Sheet + αλλαγές σε αναμονή
 let IX = {};               // βοηθητικοί πίνακες
@@ -373,8 +392,8 @@ let syncing = false, again = false, lastSync = Number(store.get('ex_last') || 0)
 
 function fromServer(d) {
   return {
-    tx: d.tx.map(r => ({id: r[0], d: r[1], t: r[2], v: r[3], c: r[4], n: r[5], a: r[6]})),
-    cats: d.cats, recs: d.recs, accs: d.accs, now: d.now, url: d.url
+    tx: d.tx.map(r => ({id: r[0], d: r[1], t: r[2], v: r[3], c: r[4], n: r[5], a: r[6], vh: r[7] || ''})),
+    cats: d.cats, recs: d.recs, accs: d.accs, vehs: d.vehs || [], now: d.now, url: d.url
   };
 }
 try { const c = JSON.parse(store.get('ex_cache') || 'null'); if (c && c.tx) D = c; } catch (e) {}
@@ -395,7 +414,7 @@ function applyOp(S, op) {
     const x = op.x;
     let i = op.old ? S.cats.findIndex(c => c.t === x.t && c.n === op.old) : -1;
     if (i < 0) i = S.cats.findIndex(c => c.t === x.t && c.n === x.n);
-    const obj = {n: x.n, t: x.t, g: x.g || '', ic: x.ic || '🏷️', o: x.o || (i >= 0 ? S.cats[i].o : S.cats.length + 1)};
+    const obj = {n: x.n, t: x.t, g: x.g || '', ic: x.ic || '🏷️', o: x.o || (i >= 0 ? S.cats[i].o : S.cats.length + 1), vf: !!x.vf};
     if (i >= 0) S.cats[i] = obj; else S.cats.push(obj);
     if (op.old && op.old !== x.n) {
       S.cats.forEach(c => { if (c.t === x.t && c.g === op.old) c.g = x.n; });
@@ -410,6 +429,26 @@ function applyOp(S, op) {
     if (i >= 0) S.recs[i] = {...op.x}; else S.recs.push({...op.x});
   } else if (op.o === 'recdel') {
     S.recs = S.recs.filter(r => r.id !== op.id);
+  } else if (op.o === 'catmerge') {
+    const target = S.cats.find(c => c.t === op.t && c.n === op.to);
+    if (!target || op.from === op.to) return;
+    S.cats = S.cats.filter(c => !(c.t === op.t && c.n === op.from));
+    S.cats.forEach(c => { if (c.t === op.t && c.g === op.from) c.g = target.g || op.to; });
+    S.tx.forEach(x => { if (x.t === op.t && x.c === op.from) x.c = op.to; });
+    S.recs.forEach(r => { if (r.t === op.t && r.c === op.from) r.c = op.to; });
+  } else if (op.o === 'veh') {
+    S.vehs = S.vehs || [];
+    const x = op.x;
+    let i = op.old ? S.vehs.findIndex(v => v.n === op.old) : -1;
+    if (i < 0) i = S.vehs.findIndex(v => v.n === x.n);
+    const obj = {n: x.n, ic: x.ic || '🚗', o: x.o || (i >= 0 ? S.vehs[i].o : S.vehs.length + 1)};
+    if (i >= 0) S.vehs[i] = obj; else S.vehs.push(obj);
+    if (op.old && op.old !== x.n) {
+      S.tx.forEach(t => { if (t.vh === op.old) t.vh = x.n; });
+      S.recs.forEach(r => { if (r.vh === op.old) r.vh = x.n; });
+    }
+  } else if (op.o === 'vehdel') {
+    S.vehs = (S.vehs || []).filter(v => v.n !== op.n);
   }
 }
 
@@ -418,6 +457,9 @@ function rebuild() {
   OPS.forEach(op => applyOp(V, op));
   V.tx.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : a.id < b.id ? 1 : -1));
   V.cats.sort((a, b) => a.o - b.o);
+  V.vehs = (V.vehs || []).sort((a, b) => a.o - b.o);
+  const veh = {};
+  V.vehs.forEach(v => veh[v.n] = v);
   // κατηγορίες
   const cat = {};
   V.cats.forEach(c => cat[c.t + '|' + c.n] = c);
@@ -432,15 +474,22 @@ function rebuild() {
     if (x.d.slice(0, 7) >= recentLimit) catUse[k].recent++;
     if (x.n) {
       const nk = x.t + '|' + norm(x.n);
-      if (!notes[nk]) notes[nk] = {n: x.n, t: x.t, c: x.c, count: 0, last: x.d, by: {}};
+      if (!notes[nk]) notes[nk] = {n: x.n, t: x.t, c: x.c, vh: x.vh || '', count: 0, last: x.d, by: {}, byv: {}};
       notes[nk].count++;
       notes[nk].by[x.c] = (notes[nk].by[x.c] || 0) + 1;
+      if (x.vh) notes[nk].byv[x.vh] = (notes[nk].byv[x.vh] || 0) + 1;
     }
   });
-  // κάθε σημείωση προτείνει τη συχνότερη κατηγορία της (σε ισοπαλία, την πιο πρόσφατη)
-  Object.values(notes).forEach(s => { let best = s.c; for (const c in s.by) if (s.by[c] > s.by[best]) best = c; s.c = best; delete s.by; });
+  // κάθε σημείωση προτείνει τη συχνότερη κατηγορία (και όχημα) της· σε ισοπαλία, την πιο πρόσφατη
+  Object.values(notes).forEach(s => {
+    let best = s.c; for (const c in s.by) if (s.by[c] > s.by[best]) best = c; s.c = best;
+    let bv = s.vh; for (const v in s.byv) if (!bv || s.byv[v] > (s.byv[bv] || 0)) bv = v; s.vh = bv;
+    delete s.by; delete s.byv;
+  });
   const pendingIds = new Set(OPS.filter(o => o.o === 'tx').map(o => o.x.id));
-  IX = {cat, groupOf, icon, catUse, notes: Object.values(notes), pendingIds};
+  const vf = (t, name) => !!(cat[t + '|' + name] || {}).vf;
+  const vicon = n => (veh[n] || {}).ic || '🚗';
+  IX = {cat, groupOf, icon, catUse, notes: Object.values(notes), pendingIds, veh, vf, vicon};
   render();
 }
 
@@ -558,7 +607,8 @@ function breakdownHTML(list, type, scope) {
 // ---- λίστα κινήσεων ----
 function txRowHTML(x) {
   const title = x.n || x.c;
-  const sub = x.n ? x.c : '';
+  const vtxt = x.vh && IX.vf(x.t, x.c) ? `${IX.vicon(x.vh)} ${x.vh}` : '';
+  const sub = [x.n ? x.c : '', vtxt].filter(Boolean).join(' · ');
   return `<div class="txrow" data-act="edit" data-id="${esc(x.id)}">` +
     `<div class="ic">${esc(IX.icon(x.t, x.c))}</div>` +
     `<div class="mid"><div class="tn">${esc(title)}${IX.pendingIds.has(x.id) ? '<span class="pend" title="Περιμένει συγχρονισμό"></span>' : ''}</div>` +
@@ -592,14 +642,22 @@ function renderHome() {
 
 function listItems() {
   let list = V.tx;
-  if (listF) list = list.filter(x => x.t === listF.t && (listF.c ? x.c === listF.c : IX.groupOf(x.t, x.c) === listF.g));
+  if (listF) list = list.filter(x => x.t === listF.t &&
+    (listF.c ? x.c === listF.c : listF.g ? IX.groupOf(x.t, x.c) === listF.g : true) &&
+    (listF.vh === undefined || (IX.vf(x.t, x.c) && (x.vh || '') === listF.vh)));
   if (query) {
     const words = norm(query).split(/\s+/).filter(Boolean);
-    list = list.filter(x => { const h = norm(x.n + ' ' + x.c + ' ' + IX.groupOf(x.t, x.c) + ' ' + nf2.format(x.v)); return words.every(w => h.includes(w)); });
+    list = list.filter(x => { const h = norm(x.n + ' ' + x.c + ' ' + IX.groupOf(x.t, x.c) + ' ' + (x.vh || '') + ' ' + nf2.format(x.v)); return words.every(w => h.includes(w)); });
   } else {
     list = list.filter(x => inPeriod(x, listP));
   }
   return list;
+}
+function filterLabel(f) {
+  const parts = [];
+  if (f.c || f.g) parts.push(`${esc(IX.icon(f.t, f.c || f.g))} ${esc(f.c || f.g)}`);
+  if (f.vh !== undefined) parts.push(f.vh ? `${esc(IX.vicon(f.vh))} ${esc(f.vh)}` : 'Χωρίς όχημα');
+  return parts.join(' · ');
 }
 function renderList() {
   const searching = !!query;
@@ -607,7 +665,7 @@ function renderList() {
   $('listLbl').textContent = listP.kind === 'y' ? `Έτος ${listP.y}` : ymLabel(listP.ym);
   $('listNext').disabled = listP.kind === 'y' ? listP.y >= today().slice(0, 4) : listP.ym >= today().slice(0, 7);
   $('filterChip').innerHTML = listF
-    ? `<button class="fchip" data-act="clrf">${esc(IX.icon(listF.t, listF.c || listF.g))} ${esc(listF.c || listF.g)} <span aria-hidden="true">✕</span></button>` +
+    ? `<button class="fchip" data-act="clrf">${filterLabel(listF)} <span aria-hidden="true">✕</span></button>` +
       (listP.kind === 'm' && !searching ? ` <button class="fchip" style="background:var(--card);color:var(--muted)" data-act="year">Όλο το ${listP.ym.slice(0, 4)}</button>` : '')
     : '';
   const list = listItems();
@@ -633,6 +691,36 @@ function renderRep() {
   drawChart(months.map(m => ({m, v: per[m] || 0})), repMode === 'm' ? repYm : null);
   $('repBreakTitle').textContent = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά κατηγορία`;
   $('repBreak').innerHTML = breakdownHTML(list, repType, 'r' + (repMode === 'y' ? y : repYm));
+  renderVeh(list);
+}
+
+const nf0 = new Intl.NumberFormat('el-GR', {maximumFractionDigits: 0});
+function renderVeh(list) {
+  const vcats = V.cats.filter(c => c.t === 'e' && c.vf);
+  const card = $('vehCard');
+  card.hidden = repType !== 'e' || !vcats.length || !V.vehs.length;
+  if (card.hidden) return;
+  const vset = new Set(vcats.map(c => c.n));
+  const rows = list.filter(x => x.t === 'e' && vset.has(x.c));
+  const cell = {}, rowT = {}, colT = {};
+  let total = 0;
+  rows.forEach(x => {
+    const v = V.vehs.some(z => z.n === x.vh) ? x.vh : '';
+    const k = v + '|' + x.c;
+    cell[k] = (cell[k] || 0) + x.v; rowT[v] = (rowT[v] || 0) + x.v; colT[x.c] = (colT[x.c] || 0) + x.v; total += x.v;
+  });
+  const num = v => v ? nf0.format(v) : '<span class="zero">–</span>';
+  const vrows = V.vehs.map(v => ({n: v.n, label: `${esc(v.ic)} ${esc(v.n)}`}));
+  if (rowT['']) vrows.push({n: '', label: 'Χωρίς όχημα', none: true});
+  let h = `<table class="vt"><thead><tr><th></th>${vcats.map(c => `<th title="${esc(c.n)}">${esc(c.ic)}</th>`).join('')}<th style="font-size:13px;font-weight:600">Σύνολο</th></tr></thead><tbody>`;
+  for (const r of vrows) {
+    h += `<tr data-act="vflt" data-vh="${esc(r.n)}"${r.none ? ' class="none"' : ''}><th>${r.label}</th>` +
+      vcats.map(c => `<td data-c="${esc(c.n)}">${num(cell[r.n + '|' + c.n])}</td>`).join('') + `<td class="tot">${num(rowT[r.n])}</td></tr>`;
+  }
+  h += `</tbody><tfoot><tr><th>Σύνολο</th>${vcats.map(c => `<td>${num(colT[c.n])}</td>`).join('')}<td>${num(total)}</td></tr></tfoot></table>`;
+  h += `<div class="legend">${vcats.map(c => `<span>${esc(c.ic)} ${esc(c.n)}</span>`).join('')}</div>`;
+  if (rowT['']) h += `<p class="note" style="text-align:left;margin:10px 0 0">Πάτα «Χωρίς όχημα» για να δεις ποιες κινήσεις δεν έχουν όχημα και να τους ορίσεις.</p>`;
+  $('vehTable').innerHTML = h;
 }
 
 function drawChart(data, sel) {
@@ -692,6 +780,12 @@ function renderSet() {
     `<span class="mid"><span class="tn">${esc(r.n || r.c)}</span><br><span class="tc">${esc(recDesc(r))}</span></span>` +
     `<span class="amt num ${r.t === 'i' ? 'pos' : ''}" style="font-weight:700">${money(r.v, r.t)}</span></button>`).join('') +
     `<button class="li add" data-act="rec"><span class="ic">＋</span><span class="mid">Νέα επαναλαμβανόμενη</span></button>`;
+  const vuse = {};
+  V.tx.forEach(x => { if (x.vh) vuse[x.vh] = (vuse[x.vh] || 0) + 1; });
+  $('vehList').innerHTML = V.vehs.map(v =>
+    `<button class="li" data-act="veh" data-n="${esc(v.n)}"><span class="ic">${esc(v.ic)}</span>` +
+    `<span class="mid"><span class="tn">${esc(v.n)}</span><br><span class="tc">${vuse[v.n] || 0} κινήσεις</span></span><span class="go">›</span></button>`).join('') +
+    `<button class="li add" data-act="veh"><span class="ic">＋</span><span class="mid">Νέο όχημα</span></button>`;
   const a = $('sheetLink');
   if (D.url) a.href = D.url; else a.removeAttribute('href');
   a.hidden = !D.url;
@@ -752,7 +846,8 @@ function topCats(t) {
 function openTx(x) {
   const isNew = !x;
   const f = x ? {...x} : {id: newId('a'), d: nowStr(), t: 'e', v: 0, c: '', n: '', a: (V.accs[0] || {}).n || 'Πορτοφόλι'};
-  let catTouched = !isNew;
+  let catTouched = !isNew, vehTouched = !isNew && !!f.vh;
+  f.vh = f.vh || '';
   openSheet(isNew ? 'Νέα κίνηση' : 'Κίνηση', s => {
     const b = s.body;
     b.innerHTML =
@@ -762,6 +857,7 @@ function openTx(x) {
       `<input class="inp" id="fNote" placeholder="π.χ. Σκλαβενίτης" autocomplete="off" enterkeyhint="done" maxlength="200" value="${esc(f.n)}">` +
       `<div class="sugg chips" id="fSugg"></div>` +
       `<label class="flabel">Κατηγορία</label><div class="chips" id="fCats"></div>` +
+      `<div id="fVehWrap" hidden><label class="flabel">Όχημα</label><div class="chips" id="fVeh"></div></div>` +
       `<label class="flabel" for="fDate">Ημερομηνία</label>` +
       `<div class="daterow"><input class="inp" type="date" id="fDate" value="${f.d.slice(0, 10)}" ><button data-d="0">Σήμερα</button><button data-d="1">Χθες</button></div>` +
       (V.accs.length > 1 ? `<label class="flabel" for="fAcc">Λογαριασμός</label><select class="inp" id="fAcc">${V.accs.map(a => `<option${a.n === f.a ? ' selected' : ''}>${esc(a.n)}</option>`).join('')}</select>` : '') +
@@ -777,6 +873,20 @@ function openTx(x) {
       b.querySelector('#fCats').innerHTML = names.map(n =>
         `<button class="chip${n === f.c ? ' sel' : ''}" data-c="${esc(n)}">${esc(IX.icon(f.t, n))} <span>${esc(n)}</span></button>`).join('') +
         `<button class="chip more" data-more="1">Όλες…</button>`;
+      drawVeh();
+    };
+    const needVeh = () => IX.vf(f.t, f.c) && V.vehs.length > 0;
+    const drawVeh = () => {
+      const show = needVeh();
+      b.querySelector('#fVehWrap').hidden = !show;
+      if (!show) return;
+      if (!f.vh && !vehTouched) {
+        const m = IX.notes.find(s => s.t === f.t && norm(s.n) === norm(note.value));
+        const last = store.get('ex_lastveh');
+        f.vh = (m && m.vh && IX.veh[m.vh]) ? m.vh : (last && IX.veh[last] ? last : '');
+      }
+      b.querySelector('#fVeh').innerHTML = V.vehs.map(v =>
+        `<button class="chip${v.n === f.vh ? ' sel' : ''}" data-vh="${esc(v.n)}">${esc(v.ic)} <span>${esc(v.n)}</span></button>`).join('');
     };
     const drawSugg = () => {
       const q = norm(note.value);
@@ -789,7 +899,7 @@ function openTx(x) {
     const learn = () => {
       if (catTouched) return;
       const m = IX.notes.find(s => s.t === f.t && norm(s.n) === norm(note.value));
-      if (m && IX.cat[f.t + '|' + m.c]) { f.c = m.c; drawCats(); }
+      if (m && IX.cat[f.t + '|' + m.c]) { f.c = m.c; if (m.vh && !vehTouched && IX.veh[m.vh]) f.vh = m.vh; drawCats(); }
     };
     drawType(); drawCats(); drawSugg();
 
@@ -802,6 +912,10 @@ function openTx(x) {
       const c = e.target.closest('button'); if (!c) return;
       if (c.dataset.more) { openCatPicker(f.t, f.c, n => { f.c = n; catTouched = true; drawCats(); }); return; }
       f.c = c.dataset.c; catTouched = true; drawCats();
+    };
+    b.querySelector('#fVeh').onclick = e => {
+      const c = e.target.closest('button'); if (!c) return;
+      f.vh = c.dataset.vh; vehTouched = true; drawVeh();
     };
     note.addEventListener('input', () => { drawSugg(); learn(); });
     note.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); note.blur(); } });
@@ -818,10 +932,12 @@ function openTx(x) {
       const v = parseAmt(amt.value);
       if (!(v > 0)) { toast('Βάλε ποσό'); amt.focus(); return; }
       if (!f.c) { toast('Διάλεξε κατηγορία'); return; }
+      if (needVeh() && !f.vh) { toast('Διάλεξε όχημα'); return; }
       const day = b.querySelector('#fDate').value || today();
       const time = isNew ? nowStr().slice(11) : f.d.slice(11) || '12:00';
       const acc = b.querySelector('#fAcc');
-      const out = {id: f.id, d: `${day} ${time}`, t: f.t, v, c: f.c, n: note.value.trim(), a: acc ? acc.value : f.a};
+      const out = {id: f.id, d: `${day} ${time}`, t: f.t, v, c: f.c, n: note.value.trim(), a: acc ? acc.value : f.a, vh: needVeh() ? f.vh : (IX.vf(f.t, f.c) ? f.vh : '')};
+      if (out.vh) store.set('ex_lastveh', out.vh);
       queue({o: 'tx', x: out});
       closeSheet();
       toast(isNew ? 'Προστέθηκε' : 'Αποθηκεύτηκε');
@@ -902,24 +1018,75 @@ function openCatEdit(t, name, onSaved) {
       groups.map(g => `<option value="${esc(g.n)}"${g.n === f.g ? ' selected' : ''}>${esc(g.ic)} ${esc(g.n)}</option>`).join('') + `</select>` +
       `<label class="flabel">Εικονίδιο</label><div class="row2"><input class="inp" id="ceI" value="${esc(f.ic)}" maxlength="8" style="flex:0 0 80px;text-align:center;font-size:22px"><span class="label" style="align-self:center">ή διάλεξε:</span></div>` +
       `<div class="emojis">${Array.from(new Intl.Segmenter('el', {granularity: 'grapheme'}).segment(EMOJI)).map(x => `<button data-e="${x.segment}">${x.segment}</button>`).join('')}</div>` +
+      (t === 'e' ? `<label class="check"><input type="checkbox" id="ceVf"${f.vf ? ' checked' : ''}> Ζητάει όχημα (καύσιμα, service κλπ)</label>` : '') +
       `<button class="primary" id="ceSave">Αποθήκευση</button>` +
+      (cur ? `<label class="flabel" for="ceM" style="margin-top:22px">Συγχώνευση σε άλλη κατηγορία</label>` +
+        `<select class="inp" id="ceM"><option value="">Διάλεξε κατηγορία…</option>` +
+        V.cats.filter(c => c.t === t && c.n !== cur.n && c.g !== cur.n).map(c => `<option value="${esc(c.n)}">${esc(c.ic)} ${esc(c.n)}</option>`).join('') +
+        `</select><button class="danger" id="ceMgo" style="color:var(--accent)" disabled>Συγχώνευση</button>` : '') +
       (cur ? `<button class="danger" id="ceDel"${used || kids.length ? ' disabled' : ''}>${used ? `Χρησιμοποιείται (${used}), δεν διαγράφεται` : kids.length ? 'Έχει υποκατηγορίες, δεν διαγράφεται' : 'Διαγραφή'}</button>` : '');
     b.querySelector('.emojis').onclick = e => { const x = e.target.closest('button'); if (x) b.querySelector('#ceI').value = x.dataset.e; };
     b.querySelector('#ceSave').onclick = () => {
       const n = b.querySelector('#ceN').value.trim().replace(/\s+/g, ' ');
       if (!n) { toast('Γράψε όνομα'); return; }
       if (IX.cat[t + '|' + n] && (!cur || cur.n !== n)) { toast('Υπάρχει ήδη κατηγορία με αυτό το όνομα'); return; }
-      const x = {n, t, g: b.querySelector('#ceG').value, ic: b.querySelector('#ceI').value.trim() || '🏷️', o: cur ? cur.o : Math.max(0, ...V.cats.map(c => c.o)) + 1};
+      const vfBox = b.querySelector('#ceVf');
+      const x = {n, t, g: b.querySelector('#ceG').value, ic: b.querySelector('#ceI').value.trim() || '🏷️', o: cur ? cur.o : Math.max(0, ...V.cats.map(c => c.o)) + 1, vf: vfBox ? vfBox.checked : false};
       queue(cur ? {o: 'cat', x, old: cur.n} : {o: 'cat', x});
       closeSheet((onSaved && onSaved(n)) || 1);
       toast('Αποθηκεύτηκε');
     };
+    const msel = b.querySelector('#ceM'), mgo = b.querySelector('#ceMgo');
+    if (msel) {
+      let armed = false, tm;
+      msel.onchange = () => { mgo.disabled = !msel.value; armed = false; mgo.classList.remove('arm'); mgo.textContent = 'Συγχώνευση'; };
+      mgo.onclick = () => {
+        if (!msel.value) return;
+        if (!armed) {
+          armed = true; mgo.classList.add('arm');
+          mgo.textContent = `Πάτα ξανά: ${used} κινήσεις πάνε στο «${msel.value}»`;
+          tm = setTimeout(() => { armed = false; mgo.classList.remove('arm'); mgo.textContent = 'Συγχώνευση'; }, 4000);
+          return;
+        }
+        clearTimeout(tm);
+        queue({o: 'catmerge', t, from: cur.n, to: msel.value});
+        closeSheet();
+        toast(`Συγχωνεύτηκε στο «${msel.value}»`);
+      };
+    }
     const del = b.querySelector('#ceDel');
     if (del && !del.disabled) armDelete(del, 'Διαγραφή', () => {
       queue({o: 'catdel', t, n: cur.n});
       closeSheet();
       toast('Διαγράφηκε');
     });
+  });
+}
+
+// ---- οχήματα ----
+function openVeh(name) {
+  const cur = name ? IX.veh[name] : null;
+  const used = cur ? V.tx.filter(x => x.vh === cur.n).length + V.recs.filter(r => r.vh === cur.n).length : 0;
+  openSheet(cur ? 'Όχημα' : 'Νέο όχημα', s => {
+    const b = s.body;
+    b.innerHTML =
+      `<label class="flabel" for="vN">Όνομα</label><input class="inp" id="vN" maxlength="40" value="${esc(cur ? cur.n : '')}" autocomplete="off" placeholder="π.χ. Mercedes">` +
+      `<label class="flabel">Εικονίδιο</label><div class="row2"><input class="inp" id="vI" value="${esc(cur ? cur.ic : '🚗')}" maxlength="8" style="flex:0 0 80px;text-align:center;font-size:22px"></div>` +
+      `<div class="emojis">${Array.from(new Intl.Segmenter('el', {granularity: 'grapheme'}).segment('🚗🚙🚘🛻🚐🚕🛵🏍️🚲🛴🚚🚜')).map(x => `<button data-e="${x.segment}">${x.segment}</button>`).join('')}</div>` +
+      `<button class="primary" id="vSave">Αποθήκευση</button>` +
+      (cur ? `<button class="danger" id="vDel"${used ? ' disabled' : ''}>${used ? `Χρησιμοποιείται (${used}), δεν διαγράφεται` : 'Διαγραφή'}</button>` : '');
+    b.querySelector('.emojis').onclick = e => { const x = e.target.closest('button'); if (x) b.querySelector('#vI').value = x.dataset.e; };
+    b.querySelector('#vSave').onclick = () => {
+      const n = b.querySelector('#vN').value.trim().replace(/\s+/g, ' ');
+      if (!n) { toast('Γράψε όνομα'); return; }
+      if (IX.veh[n] && (!cur || cur.n !== n)) { toast('Υπάρχει ήδη όχημα με αυτό το όνομα'); return; }
+      const x = {n, ic: b.querySelector('#vI').value.trim() || '🚗', o: cur ? cur.o : Math.max(0, ...V.vehs.map(v => v.o)) + 1};
+      queue(cur ? {o: 'veh', x, old: cur.n} : {o: 'veh', x});
+      closeSheet();
+      toast('Αποθηκεύτηκε');
+    };
+    const del = b.querySelector('#vDel');
+    if (del && !del.disabled) armDelete(del, 'Διαγραφή', () => { queue({o: 'vehdel', n: cur.n}); closeSheet(); toast('Διαγράφηκε'); });
   });
 }
 
@@ -934,6 +1101,7 @@ function openRec(r) {
       `<div class="amtwrap"><input id="rAmt" inputmode="decimal" placeholder="0,00" autocomplete="off" value="${esc(fmtAmtInput(f.v))}"><span>€</span></div>` +
       `<label class="flabel" for="rNote">Σημείωση</label><input class="inp" id="rNote" maxlength="200" value="${esc(f.n)}" placeholder="π.χ. Κοινόχρηστα, Netflix" autocomplete="off">` +
       `<label class="flabel">Κατηγορία</label><div class="chips" id="rCat"></div>` +
+      `<div id="rVehWrap" hidden><label class="flabel">Όχημα</label><div class="chips" id="rVeh"></div></div>` +
       `<label class="flabel">Επανάληψη</label><div class="row2"><span class="label" style="flex:0 0 auto;align-self:center">Κάθε</span>` +
       `<input class="inp" id="rEv" type="number" min="1" max="99" inputmode="numeric" value="${f.ev}" style="flex:0 0 70px;text-align:center">` +
       `<select class="inp" id="rU">${Object.entries(UNIT).map(([k, v]) => `<option value="${k}"${k === f.u ? ' selected' : ''}>${v[0]} / ${v[1]}</option>`).join('')}</select></div>` +
@@ -946,20 +1114,27 @@ function openRec(r) {
     const drawCat = () => {
       b.querySelector('#rCat').innerHTML = (f.c ? `<button class="chip sel" data-more="1">${esc(IX.icon(f.t, f.c))} <span>${esc(f.c)}</span></button>` : '') +
         `<button class="chip more" data-more="1">${f.c ? 'Αλλαγή…' : 'Διάλεξε…'}</button>`;
+      const show = IX.vf(f.t, f.c) && V.vehs.length > 0;
+      b.querySelector('#rVehWrap').hidden = !show;
+      if (show) b.querySelector('#rVeh').innerHTML = V.vehs.map(v =>
+        `<button class="chip${v.n === f.vh ? ' sel' : ''}" data-vh="${esc(v.n)}">${esc(v.ic)} <span>${esc(v.n)}</span></button>`).join('');
     };
+    f.vh = f.vh || '';
     drawType(); drawCat();
+    b.querySelector('#rVeh').onclick = e => { const c = e.target.closest('button'); if (c) { f.vh = c.dataset.vh; drawCat(); } };
     b.querySelector('#rType').onclick = e => { const v = e.target.closest('button'); if (!v) return; f.t = v.dataset.v; if (f.c && !IX.cat[f.t + '|' + f.c]) f.c = ''; drawType(); drawCat(); };
     b.querySelector('#rCat').onclick = () => openCatPicker(f.t, f.c, n => { f.c = n; drawCat(); });
     b.querySelector('#rSave').onclick = () => {
       const v = parseAmt(b.querySelector('#rAmt').value);
       if (!(v > 0)) { toast('Βάλε ποσό'); return; }
       if (!f.c) { toast('Διάλεξε κατηγορία'); return; }
+      if (IX.vf(f.t, f.c) && V.vehs.length && !f.vh) { toast('Διάλεξε όχημα'); return; }
       const nx = b.querySelector('#rNx').value;
       if (!nx) { toast('Βάλε ημερομηνία'); return; }
       const rmv = b.querySelector('#rRm').value.trim();
       const out = {id: f.id, t: f.t, v, c: f.c, n: b.querySelector('#rNote').value.trim(), a: f.a,
         ev: Math.max(1, parseInt(b.querySelector('#rEv').value, 10) || 1), u: b.querySelector('#rU').value,
-        nx, dy: nx !== f.nx || isNew ? +nx.slice(8) : f.dy, rm: rmv ? Math.max(1, parseInt(rmv, 10) || 1) : ''};
+        nx, dy: nx !== f.nx || isNew ? +nx.slice(8) : f.dy, rm: rmv ? Math.max(1, parseInt(rmv, 10) || 1) : '', vh: IX.vf(f.t, f.c) ? f.vh : ''};
       queue({o: 'rec', x: out});
       closeSheet();
       toast(nx <= today() ? 'Αποθηκεύτηκε, η κίνηση γράφεται τώρα' : 'Αποθηκεύτηκε');
@@ -1036,6 +1211,14 @@ document.addEventListener('click', e => {
     listP = scope; query = ''; $('q').value = ''; go('list');
   }
   else if (a === 'clrf') { listF = null; renderList(); }
+  else if (a === 'vflt') {
+    const cell = e.target.closest('td[data-c]');
+    listF = {t: 'e', vh: el.dataset.vh};
+    if (cell) listF.c = cell.dataset.c;
+    listP = repMode === 'y' ? {kind: 'y', y: repYm.slice(0, 4)} : {kind: 'm', ym: repYm};
+    query = ''; $('q').value = ''; go('list');
+  }
+  else if (a === 'veh') openVeh(el.dataset.n || null);
   else if (a === 'year') { listP = {kind: 'y', y: listP.ym.slice(0, 4)}; renderList(); }
   else if (a === 'lprev' || a === 'lnext') {
     const n = a === 'lprev' ? -1 : 1;
