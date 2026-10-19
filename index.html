@@ -202,6 +202,11 @@
   .switch:checked{background:var(--accent)}
   .switch:checked::after{left:23px}
   .sumsub{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:14px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}
+  .topbtns{display:flex;gap:8px;flex:0 0 auto}
+  .searchbar{flex:1;min-width:0}
+  .searchbar input{width:100%;height:42px;border-radius:12px;border:1.5px solid var(--accent);background:var(--card);color:var(--text);padding:0 12px;font:inherit}
+  .searchbar input:focus{outline:none}
+  .searchbar input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
   .stat{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:15px;background:var(--bg);border-radius:12px;padding:12px 14px}
   .stat b{font-variant-numeric:tabular-nums;text-align:right}
   .warnbox{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:12px}
@@ -222,10 +227,14 @@
 <body>
   <header class="top">
     <div class="title" id="title">Έξοδα</div>
+    <div class="searchbar" id="searchBar" hidden><input id="q" type="search" placeholder="Αναζήτηση σε όλες τις κινήσεις" autocomplete="off" enterkeyhint="search"></div>
+    <div class="topbtns">
+    <button class="iconbtn" id="searchBtn" aria-label="Αναζήτηση"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg></button>
     <button class="iconbtn" id="syncBtn" aria-label="Συγχρονισμός">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
       <span class="badge" id="badge" hidden></span>
     </button>
+    </div>
   </header>
 
   <main>
@@ -238,7 +247,6 @@
         <p class="label" style="margin:0 0 12px;line-height:1.45">Το Sheet είναι άδειο. Φέρε τα δεδομένα σας από το Fast Budget, ή ξεκίνα με νέα κίνηση από το +.</p>
         <button class="primary" style="margin-top:0" data-act="import">Εισαγωγή από Fast Budget</button>
       </div>
-      <div class="tools"><input class="search" id="q" type="search" placeholder="Αναζήτηση σε όλες τις κινήσεις" autocomplete="off"></div>
       <div id="filterChip"></div>
       <div class="nav" id="listNav">
         <button class="navbtn" data-act="lprev" aria-label="Προηγούμενο">‹</button>
@@ -701,10 +709,10 @@ function renderList() {
     : '';
   const list = listItems();
   const t = totals(list);
-  const lbl = searching ? `${list.length} ${list.length === 1 ? 'κίνηση βρέθηκε' : 'κινήσεις βρέθηκαν'} · διαφορά`
-    : listP.kind === 'y' ? 'Διαφορά έτους' : listP.kind === 'r' ? 'Διαφορά περιόδου' : 'Διαφορά μήνα';
-  $('listSum').innerHTML = `<div class="label">${lbl}</div><div class="big ${t.d < 0 ? 'neg' : t.d > 0 ? 'pos' : ''}">${signed(t.d)}</div>` +
-    `<div class="sumsub"><span class="pos">Έσοδα ${money(t.i, 'i')}</span><span class="neg">Έξοδα ${money(t.e, 'e')}</span></div>`;
+  const lbl = searching ? `${list.length} ${list.length === 1 ? 'κίνηση βρέθηκε' : 'κινήσεις βρέθηκαν'} · έξοδα`
+    : listP.kind === 'y' ? 'Έξοδα έτους' : listP.kind === 'r' ? 'Έξοδα περιόδου' : 'Έξοδα μήνα';
+  $('listSum').innerHTML = `<div class="label">${lbl}</div><div class="big">${ef.format(t.e)}</div>` +
+    `<div class="sumsub"><span class="pos">Έσοδα ${money(t.i, 'i')}</span><span class="${t.d < 0 ? 'neg' : ''}">Διαφορά ${signed(t.d)}</span></div>`;
   $('txList').innerHTML = dayGroupsHTML(list, searching ? 300 : 0);
 }
 
@@ -1368,7 +1376,7 @@ document.addEventListener('click', e => {
   else if (a === 'flt') {
     const scope = repScope();
     listF = el.dataset.c ? {t: el.dataset.t, c: el.dataset.c} : {t: el.dataset.t, g: el.dataset.g};
-    listP = scope; query = ''; $('q').value = ''; go('list');
+    listP = scope; closeSearch(); go('list');
   }
   else if (a === 'clrf') { listF = null; renderList(); }
   else if (a === 'vflt') {
@@ -1376,7 +1384,7 @@ document.addEventListener('click', e => {
     listF = {t: 'e', vh: el.dataset.vh};
     if (cell) listF.c = cell.dataset.c;
     listP = repScope();
-    query = ''; $('q').value = ''; go('list');
+    closeSearch(); go('list');
   }
   else if (a === 'veh') openVeh(el.dataset.n || null);
   else if (a === 'inbox') openInbox();
@@ -1410,10 +1418,28 @@ $('rTo').onchange = setRange;
 $('repType').onclick = e => { const b = e.target.closest('button'); if (b) { repType = b.dataset.v; renderRep(); } };
 let qT;
 $('q').addEventListener('input', () => { clearTimeout(qT); qT = setTimeout(() => { query = $('q').value.trim(); renderList(); }, 150); });
+// αναζήτηση: φακός στην πάνω γραμμή, ανοίγει πεδίο στη θέση του τίτλου
+const SEARCH_ICON = $('searchBtn').innerHTML;
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+function openSearch() {
+  $('title').hidden = true; $('searchBar').hidden = false;
+  $('searchBtn').innerHTML = CLOSE_ICON; $('searchBtn').setAttribute('aria-label', 'Κλείσιμο αναζήτησης');
+  $('q').focus();
+}
+function closeSearch() {
+  const had = !!query;
+  query = ''; $('q').value = '';
+  $('title').hidden = false; $('searchBar').hidden = true;
+  $('searchBtn').innerHTML = SEARCH_ICON; $('searchBtn').setAttribute('aria-label', 'Αναζήτηση');
+  if (had && tab === 'list') renderList();
+}
+$('searchBtn').onclick = () => { if ($('searchBar').hidden) openSearch(); else closeSearch(); };
 $('fab').onclick = () => openTx(null);
 $('syncBtn').onclick = () => sync();
 
 function go(t) {
+  if (t !== 'list' && !$('searchBar').hidden) closeSearch();
+  $('searchBtn').hidden = t !== 'list';
   tab = t;
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === t));
   ['list', 'rep', 'set'].forEach(k => $('tab-' + k).hidden = k !== t);
