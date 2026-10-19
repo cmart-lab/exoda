@@ -1,5 +1,5 @@
-// Απλός service worker: η εφαρμογή ανοίγει και χωρίς δίκτυο, τα δεδομένα έρχονται από το Sheet.
-const CACHE = 'exoda-v9';
+// Service worker: η εφαρμογή ανοίγει και χωρίς δίκτυο· με δίκτυο φέρνει πάντα την τελευταία έκδοση.
+const CACHE = 'exoda-v10';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -13,8 +13,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (u.origin !== location.origin || e.request.method !== 'GET') return;
+  // no-cache: ρωτάει πάντα τον server (φθηνά, με ETag), ώστε οι αλλαγές να φαίνονται στο επόμενο άνοιγμα
+  const fresh = new Request(e.request.url, {cache: 'no-cache', credentials: 'same-origin'});
   e.respondWith(
-    fetch(e.request)
+    fetch(fresh)
       .then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
       .catch(() => caches.match(e.request).then(m => m || caches.match('./index.html')))
   );
