@@ -179,6 +179,22 @@
   .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-top:10px}
   .check{display:flex;align-items:center;gap:10px;font-size:15px;padding:6px 0;cursor:pointer}
   .check input{width:20px;height:20px;accent-color:var(--accent)}
+  .inboxcard{display:flex;align-items:center;gap:12px;cursor:pointer;background:var(--accent-soft);color:var(--accent);font-weight:650;box-shadow:none}
+  .inboxcard .n{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+  .inboxcard .go{margin-left:auto;font-size:22px}
+  .ibi{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+  .ibh{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:8px}
+  .ibd{font-size:13px;color:var(--muted);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ibamt{font-weight:800;font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .ibi .inp{height:42px;margin-bottom:8px}
+  .ibi .chips{gap:6px}
+  .ibsrc{font-size:12px;color:var(--muted);align-self:center}
+  .ibw{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px;line-height:1.4}
+  .iba{display:flex;gap:8px;margin-top:10px}
+  .iba button{flex:1;height:42px;border-radius:12px;font-weight:650}
+  .ibno{border:1.5px solid var(--line);background:transparent;color:var(--muted)}
+  .ibok{border:0;background:var(--accent);color:var(--accent-text)}
+  .ibok:disabled{opacity:.4;cursor:default}
   .stat{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:15px;background:var(--bg);border-radius:12px;padding:12px 14px}
   .stat b{font-variant-numeric:tabular-nums;text-align:right}
   .warnbox{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:12px}
@@ -207,6 +223,9 @@
 
   <main>
     <section id="tab-home">
+      <div class="card inboxcard" id="inboxCard" data-act="inbox" hidden>
+        <span style="font-size:22px">📥</span><span class="n" id="inboxN"></span><span id="inboxTxt"></span><span class="go">›</span>
+      </div>
       <div class="card" id="startCard" hidden>
         <div class="h2">Καλώς ήρθατε</div>
         <p class="label" style="margin:0 0 12px;line-height:1.45">Το Sheet είναι άδειο. Φέρε τα δεδομένα σας από το Fast Budget, ή ξεκίνα με νέα κίνηση από το +.</p>
@@ -384,7 +403,7 @@ async function call(body) {
 }
 
 // ===================== δεδομένα =====================
-let D = {tx: [], cats: [], recs: [], accs: [], vehs: [], now: '', url: ''};
+let D = {tx: [], cats: [], recs: [], accs: [], vehs: [], inbox: [], rules: [], now: '', url: ''};
 let OPS = [];
 let V = D;                 // ό,τι βλέπουμε = Sheet + αλλαγές σε αναμονή
 let IX = {};               // βοηθητικοί πίνακες
@@ -393,7 +412,10 @@ let syncing = false, again = false, lastSync = Number(store.get('ex_last') || 0)
 function fromServer(d) {
   return {
     tx: d.tx.map(r => ({id: r[0], d: r[1], t: r[2], v: r[3], c: r[4], n: r[5], a: r[6], vh: r[7] || ''})),
-    cats: d.cats, recs: d.recs, accs: d.accs, vehs: d.vehs || [], now: d.now, url: d.url
+    cats: d.cats, recs: d.recs, accs: d.accs, vehs: d.vehs || [],
+    inbox: (d.inbox || []).map(r => ({id: r[0], d: r[1], t: r[2], v: r[3], desc: r[4], card: r[5]})),
+    rules: (d.rules || []).map(r => ({k: r[0], t: r[1], c: r[2], n: r[3], vh: r[4], cnt: r[5]})),
+    now: d.now, url: d.url
   };
 }
 try { const c = JSON.parse(store.get('ex_cache') || 'null'); if (c && c.tx) D = c; } catch (e) {}
@@ -449,6 +471,19 @@ function applyOp(S, op) {
     }
   } else if (op.o === 'vehdel') {
     S.vehs = (S.vehs || []).filter(v => v.n !== op.n);
+  } else if (op.o === 'inok' || op.o === 'inno') {
+    S.inbox = (S.inbox || []).filter(x => x.id !== op.id);
+    if (op.o === 'inok') {
+      const i = S.tx.findIndex(x => x.id === op.x.id);
+      if (i >= 0) S.tx[i] = {...op.x}; else S.tx.push({...op.x});
+      const r = op.rule;
+      if (r && r.k && r.c) {
+        S.rules = S.rules || [];
+        const j = S.rules.findIndex(x => x.k === r.k && x.t === r.t);
+        const obj = {...r, cnt: (j >= 0 ? S.rules[j].cnt : 0) + 1};
+        if (j >= 0) S.rules[j] = obj; else S.rules.push(obj);
+      }
+    }
   }
 }
 
@@ -458,6 +493,10 @@ function rebuild() {
   V.tx.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : a.id < b.id ? 1 : -1));
   V.cats.sort((a, b) => a.o - b.o);
   V.vehs = (V.vehs || []).sort((a, b) => a.o - b.o);
+  V.inbox = (V.inbox || []).sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : a.id < b.id ? -1 : 1));
+  V.rules = V.rules || [];
+  const rules = {};
+  V.rules.forEach(r => rules[r.t + '|' + r.k] = r);
   const veh = {};
   V.vehs.forEach(v => veh[v.n] = v);
   // κατηγορίες
@@ -489,7 +528,7 @@ function rebuild() {
   const pendingIds = new Set(OPS.filter(o => o.o === 'tx').map(o => o.x.id));
   const vf = (t, name) => !!(cat[t + '|' + name] || {}).vf;
   const vicon = n => (veh[n] || {}).ic || '🚗';
-  IX = {cat, groupOf, icon, catUse, notes: Object.values(notes), pendingIds, veh, vf, vicon};
+  IX = {cat, groupOf, icon, catUse, notes: Object.values(notes), pendingIds, veh, vf, vicon, rules};
   render();
 }
 
@@ -630,6 +669,10 @@ function dayGroupsHTML(list, limit) {
 
 // ===================== οθόνες =====================
 function renderHome() {
+  const nIn = V.inbox.length;
+  $('inboxCard').hidden = !nIn;
+  $('inboxN').textContent = nIn;
+  $('inboxTxt').textContent = nIn === 1 ? 'κίνηση κάρτας προς έλεγχο' : 'κινήσεις κάρτας προς έλεγχο';
   $('balance').textContent = signed(balance());
   $('balance').className = 'big' + (balance() < 0 ? ' neg' : '');
   $('homeMonth').textContent = ymLabel(homeYm);
@@ -1063,6 +1106,127 @@ function openCatEdit(t, name, onSaved) {
   });
 }
 
+// ---- κινήσεις κάρτας προς έλεγχο ----
+const GR = {α: 'a', β: 'v', γ: 'g', δ: 'd', ε: 'e', ζ: 'z', η: 'i', θ: 'th', ι: 'i', κ: 'k', λ: 'l', μ: 'm', ν: 'n', ξ: 'x', ο: 'o', π: 'p', ρ: 'r', σ: 's', ς: 's', τ: 't', υ: 'y', φ: 'f', χ: 'ch', ψ: 'ps', ω: 'o'};
+const latin = s => norm(s).replace(/ου/g, 'ou').replace(/[α-ω]/g, ch => GR[ch] || ch);
+// σταθερό κλειδί εμπόρου από την αιτιολογία της τράπεζας (π.χ. «SKLAVENITIS KALLITHE» -> «SKLAVENITIS»)
+function merchantKey(desc) {
+  let s = latin(desc).toUpperCase(), pre = '';
+  const pp = s.match(/^PAYPAL\s*\*\s*(.*)$/);
+  if (pp) { pre = 'PAYPAL '; s = pp[1]; }
+  else if (s.includes('*')) s = s.split('*')[0];
+  const toks = s.replace(/[^A-Z0-9]+/g, ' ').trim().split(' ').filter(w => w.length > 1 && !/^\d+$/.test(w));
+  if (!toks.length) return (pre + s).trim();
+  return pre + (toks[0].length >= 4 || toks.length === 1 ? toks[0] : toks[0] + ' ' + toks[1]);
+}
+function prettyName(desc) {
+  let s = latin(desc).replace(/^paypal\s*\*\s*/, '');
+  if (!/^paypal/.test(latin(desc)) && s.includes('*')) s = s.split('*')[0];
+  const toks = s.replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(w => w.length > 1 && !/^\d+$/.test(w)).slice(0, 2);
+  return toks.map(w => w[0].toUpperCase() + w.slice(1)).join(' ') || desc;
+}
+function suggest(it) {
+  const key = merchantKey(it.desc);
+  const r = IX.rules[it.t + '|' + key];
+  if (r && IX.cat[it.t + '|' + r.c]) return {c: r.c, n: r.n || prettyName(it.desc), vh: r.vh || '', src: 'γνωστό'};
+  const first = key.replace(/^PAYPAL /, '').split(' ')[0].toLowerCase().replace(/y/g, 'i');
+  if (first.length >= 3) {
+    let best = null;
+    for (const s of IX.notes) {
+      if (s.t !== it.t) continue;
+      const nt = (latin(s.n).replace(/y/g, 'i').split(/[^a-z0-9]+/).filter(Boolean)[0]) || '';
+      if (nt.length < 3) continue;
+      const L = Math.min(first.length, nt.length, 6);
+      const hit = L >= 4 ? first.slice(0, L) === nt.slice(0, L) : first === nt;
+      if (hit && (!best || s.count > best.count)) {
+        // «ίδιο κατάστημα» = όλες οι λέξεις της σημείωσης υπάρχουν με τη σειρά στην αιτιολογία
+        const mt = latin(it.desc).replace(/y/g, 'i').replace(/^paipal\s*\*\s*/, '').split(/[^a-z0-9]+/).filter(Boolean);
+        const ntoks = latin(s.n).replace(/y/g, 'i').split(/[^a-z0-9]+/).filter(Boolean);
+        best = s; best._exact = ntoks.every((w, i) => mt[i] === w);
+      }
+    }
+    // η σημείωση του ιστορικού κρατιέται μόνο αν είναι το ίδιο κατάστημα· αλλιώς το όνομα από την τράπεζα
+    if (best && IX.cat[it.t + '|' + best.c]) return {c: best.c, n: best._exact ? best.n : prettyName(it.desc), vh: best.vh || '', src: 'από το ιστορικό'};
+  }
+  return {c: it.t === 'i' && IX.cat['i|Άλλα έσοδα'] ? 'Άλλα έσοδα' : '', n: (it.t === 'i' ? 'Επιστροφή ' : '') + prettyName(it.desc), vh: '', src: ''};
+}
+const dayNum = ymd => Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)) / 864e5;
+function dupOf(it) {
+  return V.tx.find(x => x.t === it.t && !String(x.id).startsWith('e-') &&
+    Math.abs(x.v - it.v) <= Math.max(0.5, it.v * 0.05) && Math.abs(dayNum(x.d.slice(0, 10)) - dayNum(it.d)) <= 1);
+}
+function openInbox() {
+  const drafts = new Map(), hints = {};
+  const draftOf = it => {
+    const d = drafts.get(it.id);
+    if (d && d.touched) return d;
+    const h = hints[it.t + '|' + merchantKey(it.desc)];
+    const sg = h ? {...h, touched: false, src: 'όπως το προηγούμενο'} : suggest(it);
+    if (IX.vf(it.t, sg.c) && !sg.vh) { const last = store.get('ex_lastveh'); if (last && IX.veh[last]) sg.vh = last; }
+    drafts.set(it.id, sg);
+    return sg;
+  };
+  const ready = (it, d) => d.c && (!IX.vf(it.t, d.c) || !V.vehs.length || d.vh);
+  const remember = (it, d) => { if (d.c) hints[it.t + '|' + merchantKey(it.desc)] = {c: d.c, n: d.n, vh: d.vh}; };
+  const approve = (it, d) => {
+    remember(it, d);
+    const vfc = IX.vf(it.t, d.c);
+    const x = {id: 'e-' + it.id.replace(/[^A-Za-z0-9]/g, '-'), d: it.d + ' 12:00', t: it.t, v: it.v, c: d.c,
+      n: (d.n || '').trim() || prettyName(it.desc), a: (V.accs[0] || {}).n || 'Πορτοφόλι', vh: vfc ? d.vh : ''};
+    if (x.vh) store.set('ex_lastveh', x.vh);
+    queue({o: 'inok', id: it.id, x, rule: {k: merchantKey(it.desc), t: it.t, c: x.c, n: x.n, vh: x.vh}});
+  };
+  openSheet('Προς έλεγχο', s => {
+    const b = s.body;
+    const draw = () => {
+      const items = V.inbox;
+      if (!items.length) { b.innerHTML = `<div class="empty">Όλα ελέγχθηκαν ✓</div>`; return; }
+      const okAll = items.filter(it => ready(it, draftOf(it)) && !dupOf(it));
+      let h = `<p class="label" style="margin:0 0 12px;line-height:1.45">Κινήσεις της κάρτας από το email της Eurobank. Επιβεβαίωσε ή διόρθωσε την κατηγορία· η εφαρμογή τη θυμάται για την επόμενη φορά.</p>`;
+      if (okAll.length > 1) h += `<button class="primary" id="ibAll" style="margin:0 0 14px">✓ Καταχώριση όσων είναι έτοιμα (${okAll.length})</button>`;
+      for (const it of items) {
+        const d = draftOf(it), dup = dupOf(it), vfc = IX.vf(it.t, d.c) && V.vehs.length;
+        const [y, m, dd] = it.d.split('-');
+        h += `<div class="ibi" data-id="${esc(it.id)}">` +
+          `<div class="ibh"><span class="ibd">${esc(it.desc)} · ${+dd}/${+m}${it.t === 'i' ? ' · πίστωση' : ''}</span>` +
+          `<span class="ibamt ${it.t === 'i' ? 'pos' : ''}">${money(it.v, it.t)}</span></div>` +
+          `<input class="inp" data-f="n" value="${esc(d.n)}" placeholder="Σημείωση" autocomplete="off">` +
+          `<div class="chips">` + (d.c
+            ? `<button class="chip sel" data-f="cat">${esc(IX.icon(it.t, d.c))} <span>${esc(d.c)}</span></button>`
+            : `<button class="chip more" data-f="cat">Διάλεξε κατηγορία…</button>`) +
+          (d.src && !d.touched ? `<span class="ibsrc">${esc(d.src)}</span>` : '') + `</div>` +
+          (vfc ? `<div class="chips" style="margin-top:8px">${V.vehs.map(v => `<button class="chip${v.n === d.vh ? ' sel' : ''}" data-vh="${esc(v.n)}">${esc(v.ic)} <span>${esc(v.n)}</span></button>`).join('')}</div>` : '') +
+          (dup ? `<div class="ibw">⚠ Ίσως υπάρχει ήδη: ${esc(dup.n || dup.c)} ${money(dup.v, dup.t)} (${+dup.d.slice(8, 10)}/${+dup.d.slice(5, 7)}). Αν είναι η ίδια αγορά, πάτα «Απόρριψη».</div>` : '') +
+          `<div class="iba"><button class="ibno" data-f="no">Απόρριψη</button><button class="ibok" data-f="ok"${ready(it, d) ? '' : ' disabled'}>✓ Καταχώριση</button></div></div>`;
+      }
+      b.innerHTML = h;
+      const all = b.querySelector('#ibAll');
+      if (all) all.onclick = () => { const n = okAll.length; okAll.forEach(it => approve(it, draftOf(it))); draw(); toast(`Καταχωρίστηκαν ${n}`); };
+    };
+    b.addEventListener('input', e => {
+      const box = e.target.closest('.ibi'); if (!box || e.target.dataset.f !== 'n') return;
+      const it = V.inbox.find(x => x.id === box.dataset.id); if (!it) return;
+      const d = draftOf(it); d.n = e.target.value; d.touched = true;
+    });
+    b.addEventListener('click', e => {
+      const box = e.target.closest('.ibi'); if (!box) return;
+      const it = V.inbox.find(x => x.id === box.dataset.id); if (!it) return;
+      const d = draftOf(it), btn = e.target.closest('button'); if (!btn) return;
+      if (btn.dataset.f === 'cat') {
+        openCatPicker(it.t, d.c, n => {
+          d.c = n; d.touched = true;
+          if (IX.vf(it.t, n) && !d.vh) { const last = store.get('ex_lastveh'); if (last && IX.veh[last]) d.vh = last; }
+          drafts.set(it.id, d); remember(it, d); draw();
+        });
+      } else if (btn.dataset.vh) { d.vh = btn.dataset.vh; d.touched = true; drafts.set(it.id, d); remember(it, d); draw(); }
+      else if (btn.dataset.f === 'ok') { approve(it, d); draw(); toast('Καταχωρίστηκε'); }
+      else if (btn.dataset.f === 'no') { queue({o: 'inno', id: it.id}); draw(); toast('Απορρίφθηκε'); }
+    });
+    s.redraw = draw;
+    draw();
+  });
+}
+
 // ---- οχήματα ----
 function openVeh(name) {
   const cur = name ? IX.veh[name] : null;
@@ -1219,6 +1383,7 @@ document.addEventListener('click', e => {
     query = ''; $('q').value = ''; go('list');
   }
   else if (a === 'veh') openVeh(el.dataset.n || null);
+  else if (a === 'inbox') openInbox();
   else if (a === 'year') { listP = {kind: 'y', y: listP.ym.slice(0, 4)}; renderList(); }
   else if (a === 'lprev' || a === 'lnext') {
     const n = a === 'lprev' ? -1 : 1;
