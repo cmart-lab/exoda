@@ -66,7 +66,9 @@
   .brow{display:grid;grid-template-columns:34px 1fr auto;gap:2px 10px;align-items:center;padding:8px 0;cursor:pointer;border-top:1px solid var(--line)}
   .brow:first-child{border-top:0}
   .brow .ic{font-size:20px;text-align:center;grid-row:span 2}
-  .brow .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .brow .nm{font-weight:600;min-width:0;display:flex;align-items:baseline}
+  .brow .nmt{min-width:0;line-height:1.25}
+  .brow .nm .pc,.brow .nm .chev{flex:0 0 auto}
   .brow .am{font-weight:650;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .brow .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
   .brow .bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
@@ -199,6 +201,7 @@
   .switch::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
   .switch:checked{background:var(--accent)}
   .switch:checked::after{left:23px}
+  .sumsub{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:14px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}
   .stat{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:15px;background:var(--bg);border-radius:12px;padding:12px 14px}
   .stat b{font-variant-numeric:tabular-nums;text-align:right}
   .warnbox{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:12px}
@@ -226,7 +229,7 @@
   </header>
 
   <main>
-    <section id="tab-home">
+    <section id="tab-list">
       <div class="card inboxcard" id="inboxCard" data-act="inbox" hidden>
         <span style="font-size:22px">📥</span><span class="n" id="inboxN"></span><span id="inboxTxt"></span><span class="go">›</span>
       </div>
@@ -235,25 +238,6 @@
         <p class="label" style="margin:0 0 12px;line-height:1.45">Το Sheet είναι άδειο. Φέρε τα δεδομένα σας από το Fast Budget, ή ξεκίνα με νέα κίνηση από το +.</p>
         <button class="primary" style="margin-top:0" data-act="import">Εισαγωγή από Fast Budget</button>
       </div>
-      <div class="card">
-        <div class="label">Υπόλοιπο</div>
-        <div class="big" id="balance"></div>
-      </div>
-      <div class="nav">
-        <button class="navbtn" data-act="mprev" aria-label="Προηγούμενος μήνας">‹</button>
-        <button class="navlbl" id="homeMonth" data-act="mnow"></button>
-        <button class="navbtn" data-act="mnext" id="homeNext" aria-label="Επόμενος μήνας">›</button>
-      </div>
-      <div class="card sum3" id="homeSum"></div>
-      <div class="card">
-        <div class="h2">Έξοδα ανά κατηγορία</div>
-        <div id="homeBreak"></div>
-      </div>
-      <div class="h2" style="margin:18px 4px 8px">Τελευταίες κινήσεις <button data-act="allTx">Όλες</button></div>
-      <div class="txl" id="recent"></div>
-    </section>
-
-    <section id="tab-list" hidden>
       <div class="tools"><input class="search" id="q" type="search" placeholder="Αναζήτηση σε όλες τις κινήσεις" autocomplete="off"></div>
       <div id="filterChip"></div>
       <div class="nav" id="listNav">
@@ -261,13 +245,16 @@
         <button class="navlbl" id="listLbl" data-act="lnow"></button>
         <button class="navbtn" data-act="lnext" id="listNext" aria-label="Επόμενο">›</button>
       </div>
-      <div class="card sum3" id="listSum"></div>
+      <div class="card" id="listSum"></div>
       <div id="txList"></div>
     </section>
 
     <section id="tab-rep" hidden>
-      <div class="seg" id="repMode"><button data-v="m">Μήνας</button><button data-v="y">Έτος</button></div>
-      <div class="nav">
+      <div class="seg" id="repMode"><button data-v="m">Μήνας</button><button data-v="y">Έτος</button><button data-v="r">Εύρος</button></div>
+      <div class="daterow" id="repRange" hidden style="margin-bottom:12px">
+        <input class="inp" type="date" id="rFrom" aria-label="Από"><span class="label" style="align-self:center">έως</span><input class="inp" type="date" id="rTo" aria-label="Έως">
+      </div>
+      <div class="nav" id="repNav">
         <button class="navbtn" data-act="rprev" aria-label="Προηγούμενο">‹</button>
         <button class="navlbl" id="repLbl" data-act="rnow"></button>
         <button class="navbtn" data-act="rnext" id="repNext" aria-label="Επόμενο">›</button>
@@ -310,8 +297,7 @@
   </button>
 
   <nav class="tabs">
-    <button class="active" data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>Αρχική</button>
-    <button data-tab="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Κινήσεις</button>
+    <button class="active" data-tab="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Κινήσεις</button>
     <button data-tab="rep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Αναφορές</button>
     <button data-tab="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Ρυθμίσεις</button>
   </nav>
@@ -588,21 +574,21 @@ function totals(list) {
   list.forEach(x => { if (x.t === 'i') i += x.v; else e += x.v; });
   return {i, e, d: i - e};
 }
-function balance() {
-  return V.accs.reduce((s, a) => s + (a.init || 0), 0) + V.tx.reduce((s, x) => s + (x.t === 'i' ? x.v : -x.v), 0);
-}
-const inPeriod = (x, p) => p.kind === 'y' ? x.d.slice(0, 4) === p.y : x.d.slice(0, 7) === p.ym;
+const inPeriod = (x, p) => p.kind === 'y' ? x.d.slice(0, 4) === p.y
+  : p.kind === 'r' ? x.d.slice(0, 10) >= p.from && x.d.slice(0, 10) <= p.to
+  : x.d.slice(0, 7) === p.ym;
+const dmy = ymd => { const [y, m, d] = ymd.split('-'); return `${+d}/${+m}/${y}`; };
 
 // ===================== κατάσταση οθονών =====================
-let tab = 'home';
-let homeYm = today().slice(0, 7);
-let listP = {kind: 'm', ym: homeYm}, listF = null, query = '';
-let repMode = 'm', repYm = homeYm, repType = 'e';
+let tab = 'list';
+let listP = {kind: 'm', ym: today().slice(0, 7)}, listF = null, query = '';
+let repMode = 'm', repYm = today().slice(0, 7), repType = 'e';
+let repFrom = today().slice(0, 4) + '-01-01', repTo = today();
+const repScope = () => repMode === 'y' ? {kind: 'y', y: repYm.slice(0, 4)} : repMode === 'r' ? {kind: 'r', from: repFrom, to: repTo} : {kind: 'm', ym: repYm};
 const expanded = new Set();
 
 function render() {
   $('startCard').hidden = !(D.now && !V.tx.length && !OPS.length);
-  if (tab === 'home') renderHome();
   if (tab === 'list') renderList();
   if (tab === 'rep') renderRep();
   if (tab === 'set') renderSet();
@@ -633,13 +619,13 @@ function breakdownHTML(list, type, scope) {
     const key = scope + '|' + type + '|' + name, open = expanded.has(key);
     h += `<div class="brow${open ? ' open' : ''}" data-act="exp" data-k="${esc(key)}">` +
       `<div class="ic">${esc(IX.icon(type, name))}</div>` +
-      `<div class="nm">${esc(name)}<span class="pc">${pf.format(v.sum / total)}</span><span class="chev">▶</span></div><div class="am">${ef.format(v.sum)}</div>` +
+      `<div class="nm"><span class="nmt">${esc(name)}</span><span class="pc">${pf.format(v.sum / total)}</span><span class="chev">▶</span></div><div class="am">${ef.format(v.sum)}</div>` +
       `<div class="bar"><i style="width:${Math.max(1, v.sum / max * 100)}%"></i></div></div>`;
     if (open) {
       const subs = Object.entries(v.subs).sort((a, b) => b[1] - a[1]);
       for (const [c, s] of subs) {
         h += `<div class="brow sub" data-act="flt" data-t="${type}" data-c="${esc(c)}">` +
-          `<div class="ic">${esc(IX.icon(type, c))}</div><div class="nm">${esc(c === name && subs.length > 1 ? c + ' (γενικά)' : c)}<span class="pc">${pf.format(s / total)}</span></div><div class="am">${ef.format(s)}</div>` +
+          `<div class="ic">${esc(IX.icon(type, c))}</div><div class="nm"><span class="nmt">${esc(c === name && subs.length > 1 ? c + ' (γενικά)' : c)}</span><span class="pc">${pf.format(s / total)}</span></div><div class="am">${ef.format(s)}</div>` +
           `<div class="bar"><i style="width:${Math.max(1, s / max * 100)}%"></i></div></div>`;
       }
       if (subs.length > 1) h += `<div class="brow sub" data-act="flt" data-t="${type}" data-g="${esc(name)}" style="grid-template-columns:1fr"><div class="nm" style="color:var(--accent)">Όλες οι κινήσεις: ${esc(name)} ›</div></div>`;
@@ -680,21 +666,6 @@ $('inboxToggle').onchange = e => {
   store.set('ex_inbox', e.target.checked ? '1' : '0');
   toast(e.target.checked ? 'Οι κινήσεις κάρτας θα εμφανίζονται σε αυτό το κινητό' : 'Οι κινήσεις κάρτας δεν θα εμφανίζονται σε αυτό το κινητό');
 };
-function renderHome() {
-  const nIn = V.inbox.length;
-  $('inboxCard').hidden = !nIn || !showInbox();
-  $('inboxN').textContent = nIn;
-  $('inboxTxt').textContent = nIn === 1 ? 'κίνηση κάρτας προς έλεγχο' : 'κινήσεις κάρτας προς έλεγχο';
-  $('balance').textContent = signed(balance());
-  $('balance').className = 'big' + (balance() < 0 ? ' neg' : '');
-  $('homeMonth').textContent = ymLabel(homeYm);
-  $('homeNext').disabled = homeYm >= today().slice(0, 7);
-  const list = V.tx.filter(x => x.d.slice(0, 7) === homeYm);
-  sum3($('homeSum'), totals(list));
-  $('homeBreak').innerHTML = breakdownHTML(list, 'e', 'h' + homeYm);
-  $('recent').innerHTML = V.tx.length ? V.tx.slice(0, 6).map(txRowHTML).join('') : `<div class="empty">Καμία κίνηση ακόμα</div>`;
-}
-
 function listItems() {
   let list = V.tx;
   if (listF) list = list.filter(x => x.t === listF.t &&
@@ -715,17 +686,25 @@ function filterLabel(f) {
   return parts.join(' · ');
 }
 function renderList() {
+  const nIn = V.inbox.length;
+  $('inboxCard').hidden = !nIn || !showInbox();
+  $('inboxN').textContent = nIn;
+  $('inboxTxt').textContent = nIn === 1 ? 'κίνηση κάρτας προς έλεγχο' : 'κινήσεις κάρτας προς έλεγχο';
   const searching = !!query;
   $('listNav').hidden = searching;
-  $('listLbl').textContent = listP.kind === 'y' ? `Έτος ${listP.y}` : ymLabel(listP.ym);
-  $('listNext').disabled = listP.kind === 'y' ? listP.y >= today().slice(0, 4) : listP.ym >= today().slice(0, 7);
+  $('listLbl').textContent = listP.kind === 'y' ? `Έτος ${listP.y}` : listP.kind === 'r' ? `${dmy(listP.from)} έως ${dmy(listP.to)}` : ymLabel(listP.ym);
+  $('listNext').disabled = listP.kind === 'y' ? listP.y >= today().slice(0, 4) : listP.kind === 'r' || listP.ym >= today().slice(0, 7);
+  document.querySelectorAll('#listNav .navbtn').forEach(x => x.style.visibility = listP.kind === 'r' ? 'hidden' : '');
   $('filterChip').innerHTML = listF
     ? `<button class="fchip" data-act="clrf">${filterLabel(listF)} <span aria-hidden="true">✕</span></button>` +
       (listP.kind === 'm' && !searching ? ` <button class="fchip" style="background:var(--card);color:var(--muted)" data-act="year">Όλο το ${listP.ym.slice(0, 4)}</button>` : '')
     : '';
   const list = listItems();
-  sum3($('listSum'), totals(list));
-  if (searching) $('listSum').insertAdjacentHTML('afterbegin', `<div class="label" style="grid-column:1/-1">${list.length} ${list.length === 1 ? 'κίνηση βρέθηκε' : 'κινήσεις βρέθηκαν'}</div>`);
+  const t = totals(list);
+  const lbl = searching ? `${list.length} ${list.length === 1 ? 'κίνηση βρέθηκε' : 'κινήσεις βρέθηκαν'} · διαφορά`
+    : listP.kind === 'y' ? 'Διαφορά έτους' : listP.kind === 'r' ? 'Διαφορά περιόδου' : 'Διαφορά μήνα';
+  $('listSum').innerHTML = `<div class="label">${lbl}</div><div class="big ${t.d < 0 ? 'neg' : t.d > 0 ? 'pos' : ''}">${signed(t.d)}</div>` +
+    `<div class="sumsub"><span class="pos">Έσοδα ${money(t.i, 'i')}</span><span class="neg">Έξοδα ${money(t.e, 'e')}</span></div>`;
   $('txList').innerHTML = dayGroupsHTML(list, searching ? 300 : 0);
 }
 
@@ -733,19 +712,28 @@ function renderRep() {
   document.querySelectorAll('#repMode button').forEach(b => b.classList.toggle('on', b.dataset.v === repMode));
   document.querySelectorAll('#repType button').forEach(b => b.classList.toggle('on', b.dataset.v === repType));
   const y = repYm.slice(0, 4);
+  $('repNav').hidden = repMode === 'r';
+  $('repRange').hidden = repMode !== 'r';
+  if (repMode === 'r') { $('rFrom').value = repFrom; $('rTo').value = repTo; }
   $('repLbl').textContent = repMode === 'y' ? `Έτος ${y}` : ymLabel(repYm);
   $('repNext').disabled = repMode === 'y' ? y >= today().slice(0, 4) : repYm >= today().slice(0, 7);
-  const p = repMode === 'y' ? {kind: 'y', y} : {kind: 'm', ym: repYm};
+  const p = repScope();
   const list = V.tx.filter(x => inPeriod(x, p));
   sum3($('repSum'), totals(list));
   // γράφημα 12 μηνών
-  const months = repMode === 'y' ? Array.from({length: 12}, (_, i) => `${y}-${pad(i + 1)}`) : Array.from({length: 12}, (_, i) => ymShift(repYm, i - 11));
+  let months;
+  if (repMode === 'y') months = Array.from({length: 12}, (_, i) => `${y}-${pad(i + 1)}`);
+  else if (repMode === 'r') {
+    months = [];
+    for (let m = repFrom.slice(0, 7); m <= repTo.slice(0, 7) && months.length < 120; m = ymShift(m, 1)) months.push(m);
+    months = months.slice(-24);
+  } else months = Array.from({length: 12}, (_, i) => ymShift(repYm, i - 11));
   const per = {};
   V.tx.forEach(x => { if (x.t === repType) { const k = x.d.slice(0, 7); per[k] = (per[k] || 0) + x.v; } });
-  $('chartTitle').innerHTML = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά μήνα <span class="label" style="font-weight:500">${repMode === 'y' ? y : 'τελευταίοι 12'}</span>`;
+  $('chartTitle').innerHTML = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά μήνα <span class="label" style="font-weight:500">${repMode === 'y' ? y : repMode === 'r' ? `${dmy(repFrom)} έως ${dmy(repTo)}` : 'τελευταίοι 12'}</span>`;
   drawChart(months.map(m => ({m, v: per[m] || 0})), repMode === 'm' ? repYm : null);
   $('repBreakTitle').textContent = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά κατηγορία`;
-  $('repBreak').innerHTML = breakdownHTML(list, repType, 'r' + (repMode === 'y' ? y : repYm));
+  $('repBreak').innerHTML = breakdownHTML(list, repType, 'r' + (repMode === 'y' ? y : repMode === 'r' ? repFrom + repTo : repYm));
   renderVeh(list);
 }
 
@@ -1376,13 +1364,9 @@ function openImport() {
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act;
-  if (a === 'mprev') { homeYm = ymShift(homeYm, -1); renderHome(); }
-  else if (a === 'mnext') { homeYm = ymShift(homeYm, 1); renderHome(); }
-  else if (a === 'mnow') { homeYm = today().slice(0, 7); renderHome(); }
-  else if (a === 'allTx') { listF = null; listP = {kind: 'm', ym: homeYm}; go('list'); }
-  else if (a === 'exp') { const k = el.dataset.k; expanded.has(k) ? expanded.delete(k) : expanded.add(k); render(); }
+  if (a === 'exp') { const k = el.dataset.k; expanded.has(k) ? expanded.delete(k) : expanded.add(k); render(); }
   else if (a === 'flt') {
-    const scope = el.closest('#homeBreak') ? {kind: 'm', ym: homeYm} : (repMode === 'y' ? {kind: 'y', y: repYm.slice(0, 4)} : {kind: 'm', ym: repYm});
+    const scope = repScope();
     listF = el.dataset.c ? {t: el.dataset.t, c: el.dataset.c} : {t: el.dataset.t, g: el.dataset.g};
     listP = scope; query = ''; $('q').value = ''; go('list');
   }
@@ -1391,7 +1375,7 @@ document.addEventListener('click', e => {
     const cell = e.target.closest('td[data-c]');
     listF = {t: 'e', vh: el.dataset.vh};
     if (cell) listF.c = cell.dataset.c;
-    listP = repMode === 'y' ? {kind: 'y', y: repYm.slice(0, 4)} : {kind: 'm', ym: repYm};
+    listP = repScope();
     query = ''; $('q').value = ''; go('list');
   }
   else if (a === 'veh') openVeh(el.dataset.n || null);
@@ -1402,7 +1386,7 @@ document.addEventListener('click', e => {
     listP = listP.kind === 'y' ? {kind: 'y', y: String(+listP.y + n)} : {kind: 'm', ym: ymShift(listP.ym, n)};
     renderList();
   }
-  else if (a === 'lnow') { listP = {kind: 'm', ym: today().slice(0, 7)}; renderList(); }
+  else if (a === 'lnow') { if (listP.kind !== 'r') { listP = {kind: 'm', ym: today().slice(0, 7)}; renderList(); } }
   else if (a === 'rprev' || a === 'rnext') {
     const n = a === 'rprev' ? -1 : 1;
     repYm = repMode === 'y' ? `${+repYm.slice(0, 4) + n}-${repYm.slice(5)}` : ymShift(repYm, n);
@@ -1416,6 +1400,13 @@ document.addEventListener('click', e => {
   else if (a === 'import') openImport();
 });
 $('repMode').onclick = e => { const b = e.target.closest('button'); if (b) { repMode = b.dataset.v; renderRep(); } };
+const setRange = () => {
+  let f = $('rFrom').value || repFrom, t = $('rTo').value || repTo;
+  if (f > t) [f, t] = [t, f];
+  repFrom = f; repTo = t; renderRep();
+};
+$('rFrom').onchange = setRange;
+$('rTo').onchange = setRange;
 $('repType').onclick = e => { const b = e.target.closest('button'); if (b) { repType = b.dataset.v; renderRep(); } };
 let qT;
 $('q').addEventListener('input', () => { clearTimeout(qT); qT = setTimeout(() => { query = $('q').value.trim(); renderList(); }, 150); });
@@ -1425,8 +1416,8 @@ $('syncBtn').onclick = () => sync();
 function go(t) {
   tab = t;
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === t));
-  ['home', 'list', 'rep', 'set'].forEach(k => $('tab-' + k).hidden = k !== t);
-  $('title').textContent = {home: 'Έξοδα', list: 'Κινήσεις', rep: 'Αναφορές', set: 'Ρυθμίσεις'}[t];
+  ['list', 'rep', 'set'].forEach(k => $('tab-' + k).hidden = k !== t);
+  $('title').textContent = {list: 'Έξοδα', rep: 'Αναφορές', set: 'Ρυθμίσεις'}[t];
   window.scrollTo(0, 0);
   render();
 }
