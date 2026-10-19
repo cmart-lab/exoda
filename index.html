@@ -195,6 +195,10 @@
   .ibno{border:1.5px solid var(--line);background:transparent;color:var(--muted)}
   .ibok{border:0;background:var(--accent);color:var(--accent-text)}
   .ibok:disabled{opacity:.4;cursor:default}
+  .switch{flex:0 0 auto;appearance:none;-webkit-appearance:none;width:48px;height:28px;border-radius:14px;background:var(--faint);position:relative;cursor:pointer;transition:background .2s;margin:0}
+  .switch::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .switch:checked{background:var(--accent)}
+  .switch:checked::after{left:23px}
   .stat{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:15px;background:var(--bg);border-radius:12px;padding:12px 14px}
   .stat b{font-variant-numeric:tabular-nums;text-align:right}
   .warnbox{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:12px}
@@ -293,6 +297,7 @@
       <div class="sect">Ρυθμίσεις</div>
       <div class="list">
         <button class="li" data-act="cats"><span class="ic">🏷️</span><span class="mid"><span class="tn">Κατηγορίες</span><br><span class="tc">Προσθήκη, μετονομασία, εικονίδια</span></span><span class="go">›</span></button>
+        <label class="li" style="cursor:pointer"><span class="ic">💳</span><span class="mid"><span class="tn">Κινήσεις κάρτας από email</span><br><span class="tc">Λίστα «προς έλεγχο» σε αυτό το κινητό</span></span><input type="checkbox" class="switch" id="inboxToggle"></label>
         <button class="li" data-act="import"><span class="ic">📥</span><span class="mid"><span class="tn">Εισαγωγή από Fast Budget</span><br><span class="tc">Από αρχείο backup της εφαρμογής</span></span><span class="go">›</span></button>
         <a class="li" id="sheetLink" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><span class="ic">📊</span><span class="mid"><span class="tn">Άνοιγμα του Google Sheet</span><br><span class="tc">Όλα τα δεδομένα, για έλεγχο ή διορθώσεις</span></span><span class="go">›</span></a>
       </div>
@@ -668,9 +673,16 @@ function dayGroupsHTML(list, limit) {
 }
 
 // ===================== οθόνες =====================
+// η λίστα «προς έλεγχο» εμφανίζεται μόνο στα κινητά όπου ενεργοποιήθηκε
+const showInbox = () => store.get('ex_inbox') === '1';
+$('inboxToggle').checked = showInbox();
+$('inboxToggle').onchange = e => {
+  store.set('ex_inbox', e.target.checked ? '1' : '0');
+  toast(e.target.checked ? 'Οι κινήσεις κάρτας θα εμφανίζονται σε αυτό το κινητό' : 'Οι κινήσεις κάρτας δεν θα εμφανίζονται σε αυτό το κινητό');
+};
 function renderHome() {
   const nIn = V.inbox.length;
-  $('inboxCard').hidden = !nIn;
+  $('inboxCard').hidden = !nIn || !showInbox();
   $('inboxN').textContent = nIn;
   $('inboxTxt').textContent = nIn === 1 ? 'κίνηση κάρτας προς έλεγχο' : 'κινήσεις κάρτας προς έλεγχο';
   $('balance').textContent = signed(balance());
