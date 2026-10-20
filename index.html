@@ -16,6 +16,7 @@
     --accent:#2a78d6; --accent-soft:#e3eefc; --accent-text:#ffffff; --bar-dim:#b7d3f6;
     --pos:#157f3b; --neg:#c4342d; --warn:#a85f00; --warn-soft:#fff0d4;
     --shadow:0 1px 3px rgba(20,30,60,.07);
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s0:#a7aebd;
   }
   @media (prefers-color-scheme: dark){
     :root{
@@ -23,6 +24,7 @@
       --accent:#3987e5; --accent-soft:#1d2d48; --accent-text:#ffffff; --bar-dim:#2b4670;
       --pos:#5fd08a; --neg:#f07a72; --warn:#f2b54f; --warn-soft:#3a2d15;
       --shadow:none;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s0:#5d667c;
     }
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -101,7 +103,13 @@
 
   /* γράφημα */
   .chart{position:relative}
-  .chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .cscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain}
+  .cscroll::-webkit-scrollbar{display:none}
+  .cscroll svg{display:block}
+  .clegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-top:8px}
+  .clegend span{display:inline-flex;align-items:center;gap:5px}
+  .clegend i{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
+  .cavg{font-size:12px;color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:6px}
   .chart .tip{position:absolute;pointer-events:none;background:var(--text);color:var(--bg);font-size:12px;font-weight:600;padding:5px 8px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-100%);opacity:0;transition:opacity .1s}
   .chart .tip.show{opacity:1}
 
@@ -272,7 +280,7 @@
       <div class="card">
         <div class="h2" id="chartTitle"></div>
         <div class="chart" id="chart"></div>
-        <div class="label" id="chartAvg" style="font-size:12px;margin-top:6px;display:flex;align-items:center;gap:6px"></div>
+        <div id="chartAvg"></div>
       </div>
       <div class="card">
         <div class="h2" id="repBreakTitle"></div>
@@ -527,7 +535,15 @@ function rebuild() {
   const pendingIds = new Set(OPS.filter(o => o.o === 'tx').map(o => o.x.id));
   const vf = (t, name) => !!(cat[t + '|' + name] || {}).vf;
   const vicon = n => (veh[n] || {}).ic || '🚗';
-  IX = {cat, groupOf, icon, catUse, notes: Object.values(notes), pendingIds, veh, vf, vicon, rules};
+  // οι 5 μεγαλύτερες ομάδες κατηγοριών (σε όλο το ιστορικό) έχουν σταθερό χρώμα στα γραφήματα
+  const ser = {};
+  ['e', 'i'].forEach(t => {
+    const tot = {};
+    V.tx.forEach(x => { if (x.t === t) { const g = groupOf(t, x.c); tot[g] = (tot[g] || 0) + x.v; } });
+    ser[t] = Object.entries(tot).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0])
+      .sort((a, b) => ((cat[t + '|' + a] || {}).o || 99) - ((cat[t + '|' + b] || {}).o || 99));
+  });
+  IX = {cat, groupOf, icon, catUse, notes: Object.values(notes), pendingIds, veh, vf, vicon, rules, ser};
   render();
 }
 
@@ -551,6 +567,7 @@ async function sync() {
     syncErr = false;
     persist();
     rebuild();
+    fixGroupCats();
   } catch (e) {
     syncErr = true;
     if (e.message !== 'unauthorized' && !OPS.length && !D.now) toast('Δεν φόρτωσαν τα δεδομένα');
@@ -562,6 +579,28 @@ async function sync() {
     if (again) sync();
     else if (OPS.length && syncErr) retryT = setTimeout(sync, 15000);
   }
+}
+
+// Κινήσεις σε ομάδα που έχει υποκατηγορίες (π.χ. «Σπίτι») πάνε σε μια υποκατηγορία «Άλλα…» της ομάδας,
+// αφού η ίδια η ομάδα δεν επιλέγεται πια. Τρέχει μόνο με φρέσκα δεδομένα και χωρίς αλλαγές σε αναμονή.
+function fixGroupCats() {
+  if (OPS.length || !D.cats.length) return;
+  const ops = [];
+  for (const g of D.cats) {
+    if (g.g) continue;
+    const kids = D.cats.filter(c => c.t === g.t && c.g === g.n);
+    if (!kids.length) continue;
+    const txs = D.tx.filter(x => x.t === g.t && x.c === g.n), recs = D.recs.filter(r => r.t === g.t && r.c === g.n);
+    if (!txs.length && !recs.length) continue;
+    const n = g.n === 'Σπίτι' ? 'Άλλα για το σπίτι' : `Άλλα (${g.n})`;
+    if (!D.cats.some(c => c.t === g.t && c.n === n))
+      ops.push({o: 'cat', x: {n, t: g.t, g: g.n, ic: g.n === 'Σπίτι' ? '🛋️' : g.ic, o: Math.max(...kids.map(c => +c.o || 0)) + 0.5, vf: false}});
+    txs.forEach(x => ops.push({o: 'tx', x: {...x, c: n}}));
+    recs.forEach(r => ops.push({o: 'rec', x: {...r, c: n}}));
+  }
+  if (!ops.length) return;
+  OPS.push(...ops);
+  persist(); rebuild(); sync();
 }
 
 function syncUI() {
@@ -628,13 +667,13 @@ function breakdownHTML(list, type, scope) {
     h += `<div class="brow${open ? ' open' : ''}" data-act="exp" data-k="${esc(key)}">` +
       `<div class="ic">${esc(IX.icon(type, name))}</div>` +
       `<div class="nm"><span class="nmt">${esc(name)}</span><span class="pc">${pf.format(v.sum / total)}</span><span class="chev">▶</span></div><div class="am">${ef.format(v.sum)}</div>` +
-      `<div class="bar"><i style="width:${Math.max(1, v.sum / max * 100)}%"></i></div></div>`;
+      `<div class="bar"><i style="width:${Math.max(1, v.sum / max * 100)}%;background:${serColor(type, name)}"></i></div></div>`;
     if (open) {
       const subs = Object.entries(v.subs).sort((a, b) => b[1] - a[1]);
       for (const [c, s] of subs) {
         h += `<div class="brow sub" data-act="flt" data-t="${type}" data-c="${esc(c)}">` +
           `<div class="ic">${esc(IX.icon(type, c))}</div><div class="nm"><span class="nmt">${esc(c === name && subs.length > 1 ? c + ' (γενικά)' : c)}</span><span class="pc">${pf.format(s / total)}</span></div><div class="am">${ef.format(s)}</div>` +
-          `<div class="bar"><i style="width:${Math.max(1, s / max * 100)}%"></i></div></div>`;
+          `<div class="bar"><i style="width:${Math.max(1, s / max * 100)}%;background:${serColor(type, name)}"></i></div></div>`;
       }
       if (subs.length > 1) h += `<div class="brow sub" data-act="flt" data-t="${type}" data-g="${esc(name)}" style="grid-template-columns:1fr"><div class="nm" style="color:var(--accent)">Όλες οι κινήσεις: ${esc(name)} ›</div></div>`;
     }
@@ -728,18 +767,39 @@ function renderRep() {
   const p = repScope();
   const list = V.tx.filter(x => inPeriod(x, p));
   sum3($('repSum'), totals(list));
-  // γράφημα 12 μηνών
-  let months;
-  if (repMode === 'y') months = Array.from({length: 12}, (_, i) => `${y}-${pad(i + 1)}`);
-  else if (repMode === 'r') {
-    months = [];
-    for (let m = repFrom.slice(0, 7); m <= repTo.slice(0, 7) && months.length < 120; m = ymShift(m, 1)) months.push(m);
-    months = months.slice(-24);
-  } else months = Array.from({length: 12}, (_, i) => ymShift(repYm, i - 11));
-  const per = {};
-  V.tx.forEach(x => { if (x.t === repType) { const k = x.d.slice(0, 7); per[k] = (per[k] || 0) + x.v; } });
-  $('chartTitle').innerHTML = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά μήνα <span class="label" style="font-weight:500">${repMode === 'y' ? y : repMode === 'r' ? `${dmy(repFrom)} έως ${dmy(repTo)}` : 'τελευταίοι 12'}</span>`;
-  drawChart(months.map(m => ({m, v: per[m] || 0})), repMode === 'm' ? repYm : null);
+  // γράφημα: ανά μήνα, με τις μεγαλύτερες ομάδες κατηγοριών σε χρώματα
+  const per = {}, cur = today().slice(0, 7);
+  let first = cur;
+  V.tx.forEach(x => {
+    if (x.t !== repType) return;
+    const k = x.d.slice(0, 7), g = IX.groupOf(x.t, x.c), o = per[k] = per[k] || {v: 0, p: {}};
+    o.v += x.v; o.p[g] = (o.p[g] || 0) + x.v;
+    if (k < first) first = k;
+  });
+  const span = (a, b, cap) => { const r = []; for (let m = a; m <= b && r.length < cap; m = ymShift(m, 1)) r.push(m); return r; };
+  let months, sel, key, avgMonths, avgLbl;
+  if (repMode === 'y') {
+    months = Array.from({length: 12}, (_, i) => `${y}-${pad(i + 1)}`);
+    sel = chartSel && chartSel.startsWith(y) ? chartSel : null; key = 'y' + y;
+    avgMonths = months; avgLbl = 'μέσος όρος του έτους';
+  } else if (repMode === 'r') {
+    months = span(repFrom.slice(0, 7), repTo.slice(0, 7), 120);
+    sel = months.includes(chartSel) ? chartSel : null; key = 'r' + repFrom + repTo;
+    avgMonths = months; avgLbl = 'μέσος όρος της περιόδου';
+  } else {
+    // όλο το ιστορικό (έως 5 χρόνια)· φαίνονται οι τελευταίοι 13 μήνες, οι παλιότεροι με κύλιση
+    const start = [ymShift(cur, -12), first < ymShift(cur, -59) ? ymShift(cur, -59) : first].sort()[0];
+    months = span(start, cur, 60);
+    sel = repYm; key = 'm' + start;
+    avgMonths = months.slice(-13, -1); avgLbl = 'μέσος όρος 12 μηνών';
+  }
+  const av = avgMonths.map(m => (per[m] || {}).v || 0).filter(v => v > 0);
+  $('chartTitle').innerHTML = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά μήνα <span class="label" style="font-weight:500">${repMode === 'y' ? y : repMode === 'r' ? `${dmy(repFrom)} έως ${dmy(repTo)}` : months.length > 13 ? '‹ σύρε για παλιότερους' : ''}</span>`;
+  drawChart(months.map(m => ({m, v: (per[m] || {}).v || 0, p: (per[m] || {}).p || {}})), sel, {
+    key, ser: IX.ser[repType] || [], prev: repMode === 'm' ? ymShift(repYm, -12) : null,
+    avg: av.length ? av.reduce((a, b) => a + b, 0) / av.length : 0, avgLbl,
+    pick: m => { if (repMode === 'm') repYm = m; else chartSel = chartSel === m ? null : m; renderRep(); }
+  });
   $('repBreakTitle').textContent = `${repType === 'e' ? 'Έξοδα' : 'Έσοδα'} ανά κατηγορία`;
   $('repBreak').innerHTML = breakdownHTML(list, repType, 'r' + (repMode === 'y' ? y : repMode === 'r' ? repFrom + repTo : repYm));
   renderVeh(list);
@@ -774,49 +834,100 @@ function renderVeh(list) {
   $('vehTable').innerHTML = h;
 }
 
-function drawChart(data, sel) {
-  const W = 340, H = 170, top = 22, bottom = 22, left = 4, right = 4;
-  const max = Math.max(1, ...data.map(d => d.v));
-  const n = data.length, slot = (W - left - right) / n, bw = Math.min(18, slot - 6);
-  const yOf = v => top + (H - top - bottom) * (1 - v / max);
-  const avgVals = data.filter(d => d.v > 0);
-  const avg = avgVals.length ? avgVals.reduce((s, d) => s + d.v, 0) / avgVals.length : 0;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Μηνιαίο γράφημα">`;
-  s += `<line x1="${left}" x2="${W - right}" y1="${H - bottom}" y2="${H - bottom}" stroke="var(--line)" stroke-width="1"/>`;
-  if (avg) s += `<line x1="${left}" x2="${W - right}" y1="${yOf(avg)}" y2="${yOf(avg)}" stroke="var(--faint)" stroke-width="1" stroke-dasharray="3 3"/>`;
-  $('chartAvg').innerHTML = avg ? `<svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="3 3"/></svg>μέσος όρος ${ef0.format(avg)} τον μήνα` : '';
-  data.forEach((d, i) => {
-    const cx = left + slot * i + slot / 2, x = cx - bw / 2, y = yOf(d.v), h = H - bottom - y;
-    const on = sel ? d.m === sel : true;
-    const fill = on ? 'var(--accent)' : 'var(--bar-dim)';
-    if (d.v > 0) {
-      const r = Math.min(4, h, bw / 2);
-      s += `<path d="M${x},${H - bottom} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${H - bottom} Z" fill="${fill}"/>`;
-    }
-    if (sel && d.m === sel && d.v > 0) {
-      const anc = cx > W - 40 ? 'end' : cx < 40 ? 'start' : 'middle', lx = anc === 'end' ? cx + bw / 2 : anc === 'start' ? cx - bw / 2 : cx;
-      s += `<text x="${lx}" y="${y - 6}" text-anchor="${anc}" font-size="11" font-weight="700" fill="var(--text)">${ef0.format(d.v)}</text>`;
-    }
-    s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)" font-weight="${sel && d.m === sel ? 700 : 400}">${MON_S[+d.m.slice(5, 7) - 1]}</text>`;
-    s += `<rect class="hit" data-i="${i}" x="${left + slot * i}" y="0" width="${slot}" height="${H}" fill="transparent" style="cursor:pointer"/>`;
-  });
-  s += `</svg><div class="tip" id="tip"></div>`;
+const SER_C = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)'];
+const serColor = (t, g) => { const i = (IX.ser && IX.ser[t] || []).indexOf(g); return i >= 0 ? SER_C[i] : 'var(--s0)'; };
+let chartSel = null, chartKey = '';
+
+// Ράβδοι ανά μήνα, στοιβαγμένες ανά ομάδα κατηγοριών. Χωράνε 13 μήνες· αν είναι περισσότεροι, κύλιση.
+// Το άγγιγμα επιλέγει μήνα χωρίς να μετακινεί το γράφημα.
+function drawChart(data, sel, o) {
   const el = $('chart');
-  el.innerHTML = s;
+  let sc = el.querySelector('.cscroll');
+  if (!sc) {
+    el.innerHTML = '<div class="cscroll"></div><div class="tip" id="tip"></div>';
+    sc = el.querySelector('.cscroll');
+    sc.addEventListener('scroll', () => $('tip').classList.remove('show'), {passive: true});
+  }
   const tip = $('tip');
-  el.querySelectorAll('.hit').forEach(r => {
-    const d = data[+r.dataset.i];
-    r.addEventListener('pointerenter', () => {
-      const box = el.getBoundingClientRect(), k = box.width / W, i = +r.dataset.i;
+  tip.classList.remove('show');
+  const cw = sc.clientWidth || 326, n = data.length;
+  const slot = cw / Math.min(n, 13), W = slot * n, H = 184, top = 24;
+  const years = o.key[0] !== 'y', bottom = years ? 36 : 22, base = H - bottom;
+  const bw = Math.min(22, slot * 0.62);
+  const max = Math.max(1, ...data.map(d => d.v));
+  const yOf = v => top + (base - top) * (1 - v / max);
+  const si = data.findIndex(d => d.m === sel), pi = o.prev ? data.findIndex(d => d.m === o.prev) : -1;
+  // θέση κύλισης: νέο γράφημα → ο επιλεγμένος (ή ο τελευταίος) μήνας δεξιά· αλλιώς μένει όπου ήταν
+  const maxSL = Math.max(0, W - cw);
+  let sl = o.key === chartKey ? sc.scrollLeft : maxSL;
+  if (si >= 0) {
+    const L = slot * si, R = L + slot;
+    if (o.key !== chartKey) sl = R - cw;
+    else if (L < sl) sl = L;
+    else if (R > sl + cw) sl = R - cw;
+  }
+  sl = Math.max(0, Math.min(maxSL, sl));
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Μηνιαίο γράφημα">`;
+  if (si >= 0) s += `<rect x="${slot * si + 1}" y="2" width="${slot - 2}" height="${H - 4}" rx="8" fill="var(--accent-soft)"/>`;
+  s += `<line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="1"/>`;
+  if (o.avg) s += `<line x1="0" x2="${W}" y1="${yOf(o.avg)}" y2="${yOf(o.avg)}" stroke="var(--faint)" stroke-width="1" stroke-dasharray="3 3"/>`;
+  let rest = false;
+  const label = (i, d, strong) => {
+    const cx = slot * i + slot / 2, vx = cx - sl, anc = vx < 26 ? 'start' : vx > cw - 26 ? 'end' : 'middle';
+    const lx = anc === 'start' ? cx - bw / 2 : anc === 'end' ? cx + bw / 2 : cx;
+    return `<text x="${lx}" y="${yOf(d.v) - 7}" text-anchor="${anc}" font-size="11" font-weight="${strong ? 700 : 500}" fill="var(${strong ? '--text' : '--muted'})" stroke="var(--card)" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${ef0.format(d.v)}</text>`;
+  };
+  data.forEach((d, i) => {
+    const cx = slot * i + slot / 2, x = cx - bw / 2;
+    if (d.v > 0) {
+      const parts = o.ser.map((g, k) => [SER_C[k], d.p[g] || 0]);
+      const other = d.v - parts.reduce((a, p) => a + p[1], 0);
+      if (other > 0.005) { parts.push(['var(--s0)', other]); rest = true; }
+      const segs = parts.filter(p => p[1] > 0.005);
+      let acc = 0;
+      segs.forEach(([col, v], k) => {
+        const yb = yOf(acc) - (k ? 2 : 0), yt = yOf(acc + v);   // 2px κενό ανάμεσα στα κομμάτια
+        acc += v;
+        const h = yb - yt;
+        if (h < 0.75) return;
+        if (k === segs.length - 1) {
+          const r = Math.min(4, h, bw / 2);
+          s += `<path d="M${x},${yb} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + bw - r} Q${x + bw},${yt} ${x + bw},${yt + r} V${yb} Z" fill="${col}"/>`;
+        } else s += `<rect x="${x}" y="${yt}" width="${bw}" height="${h}" fill="${col}"/>`;
+      });
+    }
+    const mon = MON_S[+d.m.slice(5, 7) - 1];
+    s += `<text x="${cx}" y="${base + 14}" text-anchor="middle" font-size="10" fill="var(${i === si ? '--text' : '--muted'})" font-weight="${i === si ? 700 : 400}">${mon}</text>`;
+    if (years && (i === 0 || d.m.endsWith('-01'))) s += `<text x="${cx}" y="${base + 27}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${d.m.slice(0, 4)}</text>`;
+  });
+  if (pi >= 0 && pi !== si && data[pi].v > 0) s += label(pi, data[pi], false);
+  if (si >= 0 && data[si].v > 0) s += label(si, data[si], true);
+  data.forEach((d, i) => s += `<rect class="hit" data-i="${i}" x="${slot * i}" y="0" width="${slot}" height="${H}" fill="transparent" style="cursor:pointer"/>`);
+  s += `</svg>`;
+  sc.innerHTML = s;
+  sc.scrollLeft = sl;
+  chartKey = o.key;
+
+  const leg = o.ser.filter(g => data.some(d => d.p[g] > 0)).map(g => `<span><i style="background:${serColor(repType, g)}"></i>${esc(g)}</span>`);
+  if (rest) leg.push(`<span><i style="background:var(--s0)"></i>Άλλες</span>`);
+  $('chartAvg').innerHTML = (leg.length > 1 ? `<div class="clegend">${leg.join('')}</div>` : '') +
+    (o.avg ? `<div class="cavg"><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="3 3"/></svg>${o.avgLbl}: ${ef0.format(o.avg)} τον μήνα</div>` : '');
+
+  sc.querySelectorAll('.hit').forEach(r => {
+    const i = +r.dataset.i, d = data[i];
+    r.addEventListener('pointerenter', e => {
+      if (e.pointerType !== 'mouse') return;
       tip.textContent = `${ymLabel(d.m)}: ${ef0.format(d.v)}`;
-      tip.style.left = Math.min(box.width - 70, Math.max(70, (left + slot * i + slot / 2) * k)) + 'px';
-      tip.style.top = (yOf(d.v) * k - 8) + 'px';
+      tip.style.left = Math.min(el.clientWidth - 70, Math.max(70, slot * i + slot / 2 - sc.scrollLeft)) + 'px';
+      tip.style.top = (yOf(d.v) - 8) + 'px';
       tip.classList.add('show');
     });
     r.addEventListener('pointerleave', () => tip.classList.remove('show'));
-    r.addEventListener('click', () => { repMode = 'm'; repYm = d.m; renderRep(); });
+    r.addEventListener('click', () => o.pick(d.m));
   });
 }
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (tab === 'rep') renderRep(); }, 150); });
 
 function recDesc(r) {
   const u = UNIT[r.u] || UNIT.m;
@@ -886,10 +997,11 @@ function armDelete(btn, label, action) {
 }
 
 // ---- κίνηση: προσθήκη / διόρθωση ----
+const isGroupWithKids = (t, n) => V.cats.some(c => c.t === t && c.g === n);
 function topCats(t) {
   return V.cats.filter(c => c.t === t)
     .map(c => ({c, u: IX.catUse[t + '|' + c.n] || {all: 0, recent: 0}}))
-    .filter(x => x.u.all > 0)
+    .filter(x => x.u.all > 0 && !isGroupWithKids(t, x.c.n))
     .sort((a, b) => b.u.recent - a.u.recent || b.u.all - a.u.all)
     .slice(0, 8).map(x => x.c.n);
 }
@@ -920,7 +1032,7 @@ function openTx(x) {
     const drawCats = () => {
       let names = topCats(f.t);
       if (f.c && !names.includes(f.c)) names = [f.c, ...names];
-      if (!names.length) names = V.cats.filter(c => c.t === f.t && !c.g).map(c => c.n).slice(0, 8);
+      if (!names.length) names = V.cats.filter(c => c.t === f.t && !isGroupWithKids(f.t, c.n)).map(c => c.n).slice(0, 8);
       b.querySelector('#fCats').innerHTML = names.map(n =>
         `<button class="chip${n === f.c ? ' sel' : ''}" data-c="${esc(n)}">${esc(IX.icon(f.t, n))} <span>${esc(n)}</span></button>`).join('') +
         `<button class="chip more" data-more="1">Όλες…</button>`;
@@ -1007,15 +1119,17 @@ function openCatPicker(t, current, onPick) {
     const draw = () => {
       const q = norm(b.querySelector('#cpQ').value);
       const cats = V.cats.filter(c => c.t === t);
-      const groups = cats.filter(c => !c.g || !IX.cat[t + '|' + c.g]);
-      let h = '';
-      for (const g of groups) {
-        const kids = cats.filter(c => c.g === g.n);
-        const show = [g, ...kids].filter(c => !q || norm(c.n).includes(q) || norm(g.n).includes(q));
-        if (!show.length) continue;
-        h += `<div class="pgroup"><div class="gh">${esc(g.ic)} ${esc(g.n)}</div><div class="chips">` +
-          show.map(c => `<button class="chip${c.n === current ? ' sel' : ''}" data-c="${esc(c.n)}">${c === g ? '' : esc(c.ic) + ' '}<span>${esc(c === g ? 'Γενικά' : c.n)}</span></button>`).join('') +
-          `</div></div>`;
+      const tops = cats.filter(c => !c.g || !IX.cat[t + '|' + c.g]);
+      const kidsOf = g => cats.filter(c => c.g === g.n);
+      const match = (c, g) => !q || norm(c.n).includes(q) || (g && norm(g.n).includes(q));
+      const chip = c => `<button class="chip${c.n === current ? ' sel' : ''}" data-c="${esc(c.n)}">${esc(c.ic)} <span>${esc(c.n)}</span></button>`;
+      // πρώτα οι απλές κατηγορίες, μετά οι ομάδες με τις υποκατηγορίες τους (η ομάδα η ίδια δεν επιλέγεται)
+      const singles = tops.filter(g => !kidsOf(g).length && match(g));
+      let h = singles.length ? `<div class="pgroup"><div class="chips">${singles.map(chip).join('')}</div></div>` : '';
+      for (const g of tops) {
+        const kids = kidsOf(g).filter(c => match(c, g));
+        if (!kids.length) continue;
+        h += `<div class="pgroup"><div class="gh">${esc(g.ic)} ${esc(g.n)}</div><div class="chips">${kids.map(chip).join('')}</div></div>`;
       }
       b.querySelector('#cpList').innerHTML = h || `<div class="empty">Δεν βρέθηκε</div>`;
     };
@@ -1407,7 +1521,7 @@ document.addEventListener('click', e => {
   else if (a === 'cats') openCats();
   else if (a === 'import') openImport();
 });
-$('repMode').onclick = e => { const b = e.target.closest('button'); if (b) { repMode = b.dataset.v; renderRep(); } };
+$('repMode').onclick = e => { const b = e.target.closest('button'); if (b) { repMode = b.dataset.v; chartSel = null; renderRep(); } };
 const setRange = () => {
   let f = $('rFrom').value || repFrom, t = $('rTo').value || repTo;
   if (f > t) [f, t] = [t, f];

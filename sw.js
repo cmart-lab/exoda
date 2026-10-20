@@ -1,5 +1,5 @@
 // Service worker: η εφαρμογή ανοίγει και χωρίς δίκτυο· με δίκτυο φέρνει πάντα την τελευταία έκδοση.
-const CACHE = 'exoda-v10';
+const CACHE = 'exoda-v11';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
