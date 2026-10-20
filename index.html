@@ -871,7 +871,6 @@ function drawChart(data, sel, o) {
   if (si >= 0) s += `<rect x="${slot * si + 1}" y="2" width="${slot - 2}" height="${H - 4}" rx="8" fill="var(--accent-soft)"/>`;
   s += `<line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="1"/>`;
   if (o.avg) s += `<line x1="0" x2="${W}" y1="${yOf(o.avg)}" y2="${yOf(o.avg)}" stroke="var(--faint)" stroke-width="1" stroke-dasharray="3 3"/>`;
-  let rest = false;
   const label = (i, d, strong) => {
     const cx = slot * i + slot / 2, vx = cx - sl, anc = vx < 26 ? 'start' : vx > cw - 26 ? 'end' : 'middle';
     const lx = anc === 'start' ? cx - bw / 2 : anc === 'end' ? cx + bw / 2 : cx;
@@ -882,7 +881,7 @@ function drawChart(data, sel, o) {
     if (d.v > 0) {
       const parts = o.ser.map((g, k) => [SER_C[k], d.p[g] || 0]);
       const other = d.v - parts.reduce((a, p) => a + p[1], 0);
-      if (other > 0.005) { parts.push(['var(--s0)', other]); rest = true; }
+      if (other > 0.005) parts.push(['var(--s0)', other]);
       const segs = parts.filter(p => p[1] > 0.005);
       let acc = 0;
       segs.forEach(([col, v], k) => {
@@ -908,10 +907,8 @@ function drawChart(data, sel, o) {
   sc.scrollLeft = sl;
   chartKey = o.key;
 
-  const leg = o.ser.filter(g => data.some(d => d.p[g] > 0)).map(g => `<span><i style="background:${serColor(repType, g)}"></i>${esc(g)}</span>`);
-  if (rest) leg.push(`<span><i style="background:var(--s0)"></i>Άλλες</span>`);
-  $('chartAvg').innerHTML = (leg.length > 1 ? `<div class="clegend">${leg.join('')}</div>` : '') +
-    (o.avg ? `<div class="cavg"><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="3 3"/></svg>${o.avgLbl}: ${ef0.format(o.avg)} τον μήνα</div>` : '');
+  // χωρίς υπόμνημα: τα χρώματα εξηγούνται από τις μπάρες του πίνακα «ανά κατηγορία» από κάτω
+  $('chartAvg').innerHTML = (o.avg ? `<div class="cavg"><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="3 3"/></svg>${o.avgLbl}: ${ef0.format(o.avg)} τον μήνα</div>` : '');
 
   sc.querySelectorAll('.hit').forEach(r => {
     const i = +r.dataset.i, d = data[i];
